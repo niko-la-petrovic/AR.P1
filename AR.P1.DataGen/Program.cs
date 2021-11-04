@@ -9,6 +9,7 @@ namespace AR.P1.DataGen
     {
         private static byte[] byteArray = new byte[1];
         private static byte[] shortArray = new byte[2];
+        private static byte[] triArray = new byte[3];
         private static byte[] intArray = new byte[4];
 
         public class Options
@@ -25,7 +26,7 @@ namespace AR.P1.DataGen
             public string OutputFilePath { get; set; }
             [Option('f', "frequency", Required = false, HelpText = "Set the frequency of signal.", Default = 800)]
             public double Frequency { get; set; }
-            [Option('b', "bit-depth", Required = false, HelpText = "Set the bit depth.", Default = 8)]
+            [Option('b', "bit-depth", Required = false, HelpText = "Set the bit depth.", Default = 16)]
             public int BitDepth { get; set; }
         }
 
@@ -80,9 +81,9 @@ namespace AR.P1.DataGen
                 case 1:
                     return v =>
                     {
-                        fixed(byte* array = byteArray)
+                        fixed (byte* array = byteArray)
                         {
-                            *array = (byte)(v+127); 
+                            *array = (byte)(v + 127);
                         }
                         return byteArray;
                     };
@@ -95,6 +96,21 @@ namespace AR.P1.DataGen
                             *shortArray = (short)v;
                         }
                         return shortArray;
+                    };
+                case 3:
+                    return v =>
+                    {
+                        fixed (byte* byteArray = triArray)
+                        {
+                            int val = ((int)v) & 0x00_ff_ff_ff;
+                            byte low = (byte)(val & 0x00_00_00_ff);
+                            byte mid = (byte)((val & 0x00_00_ff_00) >> 8);
+                            byte high = (byte)((val & 0x00_ff_00_00) >> 16);
+                            byteArray[0] = low;
+                            byteArray[1] = mid;
+                            byteArray[2] = high;
+                        }
+                        return triArray;
                     };
                 case 4:
                     return v =>
