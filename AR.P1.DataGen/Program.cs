@@ -25,7 +25,7 @@ namespace AR.P1.DataGen
             public string OutputFilePath { get; set; }
             [Option('f', "frequency", Required = false, HelpText = "Set the frequency of signal.", Default = 800)]
             public double Frequency { get; set; }
-            [Option('b', "bit-depth", Required = false, HelpText = "Set the bit depth.", Default = 16)]
+            [Option('b', "bit-depth", Required = false, HelpText = "Set the bit depth.", Default = 8)]
             public int BitDepth { get; set; }
         }
 
@@ -82,7 +82,7 @@ namespace AR.P1.DataGen
                     {
                         fixed(byte* array = byteArray)
                         {
-                            *array = (byte)(sbyte)v;
+                            *array = (byte)(v+127); 
                         }
                         return byteArray;
                     };
