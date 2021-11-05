@@ -100,6 +100,7 @@ namespace AR.P1.DataGen
                 case 3:
                     return v =>
                     {
+                        // TODO: not working as it should
                         fixed (byte* byteArray = triArray)
                         {
                             int val = ((int)v) & 0x00_ff_ff_ff;
