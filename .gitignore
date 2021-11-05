@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Media files
+*.wav
+*.o
+AR.P1.ASM/main
+*.out
