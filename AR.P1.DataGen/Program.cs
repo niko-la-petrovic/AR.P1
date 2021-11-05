@@ -81,15 +81,9 @@ namespace AR.P1.DataGen
                 case 1:
                     return v =>
                     {
-<<<<<<< HEAD
-                        fixed(byte* array = byteArray)
-                        {
-                            *array = (byte)(sbyte)v;
-=======
                         fixed (byte* array = byteArray)
                         {
                             *array = (byte)(v + 127);
->>>>>>> 44d3f22934c16c0173051ba2185fa9f6f7b8bc95
                         }
                         return byteArray;
                     };
@@ -103,8 +97,6 @@ namespace AR.P1.DataGen
                         }
                         return shortArray;
                     };
-<<<<<<< HEAD
-=======
                 case 3:
                     return v =>
                     {
@@ -121,7 +113,6 @@ namespace AR.P1.DataGen
                         }
                         return triArray;
                     };
->>>>>>> 44d3f22934c16c0173051ba2185fa9f6f7b8bc95
                 case 4:
                     return v =>
                     {
