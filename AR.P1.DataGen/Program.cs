@@ -9,6 +9,7 @@ namespace AR.P1.DataGen
     {
         private static byte[] byteArray = new byte[1];
         private static byte[] shortArray = new byte[2];
+        private static byte[] triArray = new byte[3];
         private static byte[] intArray = new byte[4];
 
         public class Options
@@ -80,9 +81,15 @@ namespace AR.P1.DataGen
                 case 1:
                     return v =>
                     {
+<<<<<<< HEAD
                         fixed(byte* array = byteArray)
                         {
                             *array = (byte)(sbyte)v;
+=======
+                        fixed (byte* array = byteArray)
+                        {
+                            *array = (byte)(v + 127);
+>>>>>>> 44d3f22934c16c0173051ba2185fa9f6f7b8bc95
                         }
                         return byteArray;
                     };
@@ -96,6 +103,24 @@ namespace AR.P1.DataGen
                         }
                         return shortArray;
                     };
+<<<<<<< HEAD
+=======
+                case 3:
+                    return v =>
+                    {
+                        fixed (byte* byteArray = triArray)
+                        {
+                            int val = ((int)v) & 0x00_ff_ff_ff;
+                            byte low = (byte)(val & 0x00_00_00_ff);
+                            byte mid = (byte)((val & 0x00_00_ff_00) >> 8);
+                            byte high = (byte)((val & 0x00_ff_00_00) >> 16);
+                            byteArray[0] = low;
+                            byteArray[1] = mid;
+                            byteArray[2] = high;
+                        }
+                        return triArray;
+                    };
+>>>>>>> 44d3f22934c16c0173051ba2185fa9f6f7b8bc95
                 case 4:
                     return v =>
                     {
