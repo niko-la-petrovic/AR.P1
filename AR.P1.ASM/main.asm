@@ -6,7 +6,7 @@ extern atoi
 extern strlen
 
 ; sys calls
-sys_read: 0
+sys_read: equ 0
 sys_write: equ 1
 sys_open: equ 2
 sys_exit: equ 60
