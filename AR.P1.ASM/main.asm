@@ -33,22 +33,18 @@ std_err: equ 2
     NEWLINE
 %endmacro
 
-section .data
-    ;TODO move strings to section .rodata
+section .rodata
     filename: db "/home/ubuntu/Documents/AR.P1-master/AR.P1.ASM/output.wav", 0
     filename_len: equ $-filename
 
     out_filename: db "output.bin", 0
     out_filename_len: equ $-out_filename
 
+    ;strings
     welcome: db "FFT ASM", 0
     welcome_len: equ $-welcome
     goodbye_str: db "Finished.", 0
     goodbye_str_len: equ $-goodbye_str
-    
-    format_str: db "%s", 0
-    
-    max_str_len: db 0xffffffffffffffff
     
     missing_args_str: db "No file name provided.", 0
     missing_args_str_len: equ $-missing_args_str
@@ -57,14 +53,22 @@ section .data
     too_many_args_str: db "Too many arguments provided.", 0
     invalid_sampling_rate_str: db "Invalid sampling rate provided.", 0
     invalid_bit_depth_str: db "Invalid bit depth provided.", 0
+    
+    format_str: db "%s", 0
+    
+    max_str_len: db 0xffffffffffffffff    
+section .data
 
-    buffer: 
 section .bss
     argc: resq 1
     argv: resq 1
+    
     filename_arg: resq 1
+    
     fd_in: resq 1
     fd_out: resq 1
+    
+    buffer: resb 1024; 64 shorts
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -195,8 +199,8 @@ strlen_o:
     mov rbx, rdi
     xor al, al
     
-    mov rcx, [max_str_len]; max iterations in repne
-    repne scasb; compare each byte in string with al to find null/0 (while rdi ne al)
+    mov rcx, [max_str_len];max iterations in repne
+    repne scasb;compare each byte in string with al to find null/0 (while rdi ne al)
     
     sub rdi, rbx
     mov rax, rdi
