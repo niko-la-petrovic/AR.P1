@@ -6,11 +6,13 @@ extern atoi
 extern strlen
 
 ; sys calls
+sys_read: 0
 sys_write: equ 1
 sys_open: equ 2
 sys_exit: equ 60
 ; flags
 O_RDONLY: equ 0
+O_RDWR: equ 2
 ; i/o
 std_out: equ 1
 
