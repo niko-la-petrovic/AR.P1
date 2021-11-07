@@ -4,6 +4,7 @@ extern puts
 extern printf
 extern atoi
 extern strlen
+extern fprintf
 
 ; sys calls
 sys_read: equ 0
@@ -11,12 +12,14 @@ sys_write: equ 1
 sys_open: equ 2
 sys_close: equ 3
 sys_exit: equ 60
+sys_unlink: equ 87
+sys_time: equ 201
 ; flags
-O_RDONLY: equ 0
-O_WRONLY: equ 1
-O_RDWR: equ 2
-O_CREAT: equ 100
-O_TRUNC: equ 1000
+O_RDONLY: equ 00
+O_WRONLY: equ 01
+O_RDWR: equ 02
+O_CREAT: equ 0100
+O_TRUNC: equ 0x200
 ; i/o
 std_in: equ 0
 std_out: equ 1
@@ -37,7 +40,7 @@ section .rodata
     filename: db "/home/ubuntu/Documents/AR.P1-master/AR.P1.ASM/output.wav", 0
     filename_len: equ $-filename
 
-    out_filename: db "output.bin", 0
+    out_filename: db "./output.bin", 0
     out_filename_len: equ $-out_filename
 
     ;strings
@@ -55,16 +58,19 @@ section .rodata
     invalid_bit_depth_str: db "Invalid bit depth provided.", 0
     
     format_str: db "%s", 0
+    format_int: db "%d", 0
     
     max_str_len: db 0xffffffffffffffff    
 section .data
-
+    last_time: dq 1
+    null_byte: db 0
 section .bss
     argc: resq 1
     argv: resq 1
     
     filename_arg: resq 1
     
+    fd: resq 1
     fd_in: resq 1
     fd_out: resq 1
     
@@ -98,21 +104,35 @@ CMAIN:
  ;   printl filename, filename_len ; TODO use cli arg
 
     mov rdi, filename ; TODO use cli arg
-    mov rax, sys_open
     mov rsi, O_RDONLY    
-    syscall
+    call open_file
+    mov rax, [fd]
     mov [fd_in], rax
-    cmp rax, 0
-    js failed_file_open
 
     mov rdi, out_filename
-    mov rax, sys_open
-    mov rsi, O_TRUNC | O_CREAT | O_WRONLY
+    mov rsi, O_CREAT | O_RDWR | O_TRUNC
     mov rdx, 644o     
-    syscall
+    call open_file
+    mov rax, [fd]
     mov [fd_out], rax
-    cmp rax, 0
-    js failed_file_open
+    
+    mov rdi, [fd_out]
+    mov rdx, filename_len
+    mov rsi, filename
+    call write_file
+    
+    mov rdx, 1
+    mov rsi, null_byte
+    call write_file
+    
+    mov rax, sys_time
+    mov rdi, last_time
+    syscall
+    
+    mov rdi, [fd_out]
+    mov rdx, 8
+    mov rsi, last_time
+    call write_file
 
     ; TODO read file    
 
@@ -144,6 +164,23 @@ cout_str_w_len:
     mov rax, sys_write
     mov rdi, std_out
     syscall
+    ret
+write_file:
+    ;file descriptor in rdi
+    ;buffer length in rsi
+    mov rax, sys_write
+    syscall
+    ret
+open_file:
+    ;file path string in rdi
+    ;open flags in rsi
+    ;permission flags in rdx
+    ;returns file descriptor in fd
+    mov rax, sys_open
+    syscall
+    mov [fd], rax
+    cmp rax, 0
+    js failed_file_open
     ret
 failed_file_open:
     ;file name str in rdi
@@ -188,7 +225,7 @@ get_filename_1:
     mov rsi, rdi
     call cout_str_w_len
     NEWLINE
-    ; TODO adjust rbx
+
     pop rcx
     ret
 strlen_o:
