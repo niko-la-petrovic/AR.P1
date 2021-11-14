@@ -5,8 +5,9 @@ extern printf
 extern atoi
 extern strlen
 extern fprintf
+extern calloc
 
-; sys calls
+;sys calls
 sys_read: equ 0
 sys_write: equ 1
 sys_open: equ 2
@@ -14,13 +15,13 @@ sys_close: equ 3
 sys_exit: equ 60
 sys_unlink: equ 87
 sys_time: equ 201
-; flags
+;flags
 O_RDONLY: equ 00
 O_WRONLY: equ 01
 O_RDWR: equ 02
 O_CREAT: equ 0100
 O_TRUNC: equ 0x200
-; i/o
+;i/o
 std_in: equ 0
 std_out: equ 1
 std_err: equ 2
@@ -56,6 +57,7 @@ section .rodata
     too_many_args_str: db "Too many arguments provided.", 0
     invalid_sampling_rate_str: db "Invalid sampling rate provided.", 0
     invalid_bit_depth_str: db "Invalid bit depth provided.", 0
+    invalid_in_file_header_str: db "Invalid input file header.", 0
     
     format_str: db "%s", 0
     format_int: db "%d", 0
@@ -74,18 +76,25 @@ section .bss
     fd_in: resq 1
     fd_out: resq 1
     
-    buffer: resb 1024; 64 shorts
+    data_len: resb 4
+    half_data_len: resb 4
+    
+    %define buffer_len 1024;64 shorts
+    buffer: resb buffer_len
+    %define header_buffer_len 44;WAV file header
+    header_buffer: resb header_buffer_len 
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
-    mov rbp, rsp; for correct debugging
+    mov rbp, rsp;for correct debugging
 
     mov [argv], rsi
     mov [argc], rdi
     
-;    print welcome,welcome_len
+    ;print welcome,welcome_len
+    
      cmp byte [argc], 1
-    ;JZ missing_args
+    ;jz missing_args
 
     mov rax, 2
     sub rax, [argc]
@@ -94,16 +103,16 @@ CMAIN:
     mov rcx, [argc]
     mov rbx, rsi
 
-;    printl welcome, welcome_len
+    ;printl welcome, welcome_len
 
     call get_filename
     mov [filename_arg], rsi
     mov rdi, rsi
     call cout_str
     
- ;   printl filename, filename_len ; TODO use cli arg
+    ;printl filename, filename_len ;TODO use cli arg
 
-    mov rdi, filename ; TODO use cli arg
+    mov rdi, filename;TODO use cli arg
     mov rsi, O_RDONLY    
     call open_file
     mov rax, [fd]
@@ -134,19 +143,76 @@ CMAIN:
     mov rsi, last_time
     call write_file
 
-    ; TODO read file    
+    mov rdi, [fd_in]
+    mov rsi, header_buffer
+    mov rdx, header_buffer_len
+    call read_file
+    cmp rax, header_buffer_len
+    jnz invalid_in_file_header
+
+    ;TODO move header_buffer to rbx
+
+    ;number of channels    
+    lea rax, [rsi + 22]
+    movzx rax, WORD [rax]
+    cmp rax, 1
+    jnz invalid_in_file_header
+
+    ;sampling rate
+    lea rax, [rsi + 24]
+    mov rax, [rax]
+    cmp eax, 44100    
+
+    lea rax, [rsi + 34]
+    movzx rax, WORD [rax]
+    cmp rax, 0x10
+    jnz invalid_bit_depth
+
+    ;apparently a comment containing sect1on (replace 1 with i) breaks the debugger?
+    ;data size
+    lea rax, [rsi + 40]
+    mov rax, [rax]
+    mov [data_len], eax
+    cmp eax, 0
+    jz invalid_in_file_header
+    sar eax, 1
+    mov [half_data_len], eax
+
+    ;data sect1on
+    vmovq xmm1, rax
+    
+    mov rdi, [fd_in]
+    mov rsi, buffer
+    mov rdx, buffer_len
+    call read_file
+    ;TODO cmp rax with 0 and then with buffer len
+    
+    lea rax, [rsi]
+    vmovdqu ymm0, [rax]
+;    vmovdqa ymm0, [rax]
 
     mov rdi, [fd_out]
     call close_file
 
     mov rdi, [fd_in]
     call close_file 
-;    printl goodbye_str, goodbye_str_len
+    ;printl goodbye_str, goodbye_str_len
                             
     xor rax, rax
     ret
 _nop:
     ret
+read_file:
+    ;file descriptor in rdi
+    ;buffer to read to in rsi
+    ;max. number of characters to read into buffer in rdx
+    mov rax, sys_read
+    syscall    
+    ret
+invalid_in_file_header:
+    PRINT_STRING invalid_in_file_header_str
+    NEWLINE
+    call exit
 close_file:
     ;file descriptor in rbx
     mov rax, sys_close
@@ -186,9 +252,7 @@ failed_file_open:
     ;file name str in rdi
     call cout_str
     PRINT_STRING failed_file_open_str 
-        
     NEWLINE
-    
     call exit
 invalid_bit_depth:
     PRINT_STRING invalid_bit_depth_str
