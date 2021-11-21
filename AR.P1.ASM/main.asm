@@ -6,6 +6,8 @@ extern atoi
 extern strlen
 extern fprintf
 extern calloc
+extern free
+extern aligned_alloc
 
 ;sys calls
 sys_read: equ 0
@@ -58,14 +60,17 @@ section .rodata
     invalid_sampling_rate_str: db "Invalid sampling rate provided.", 0
     invalid_bit_depth_str: db "Invalid bit depth provided.", 0
     invalid_in_file_header_str: db "Invalid input file header.", 0
+    invlid_in_file_read_str: db "Invalid input file read.", 0
+    memory_allocation_err_str: db "Failed to allocate memory.", 0
     
     format_str: db "%s", 0
     format_int: db "%d", 0
     
-    max_str_len: db 0xffffffffffffffff    
+    max_str_len: db 0xffffffffffffffff
+    null_byte: db 0    
 section .data
     last_time: dq 1
-    null_byte: db 0
+    signal_counter: dq 1
 section .bss
     argc: resq 1
     argv: resq 1
@@ -78,11 +83,13 @@ section .bss
     
     data_len: resb 4
     half_data_len: resb 4
-    
-    %define buffer_len 1024;64 shorts
+    signal_ptr: resq 1
+
+    %define buffer_len 32;16 shorts
+    align 32
     buffer: resb buffer_len
     %define header_buffer_len 44;WAV file header
-    header_buffer: resb header_buffer_len 
+    header_buffer: resb header_buffer_len
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -150,7 +157,7 @@ CMAIN:
     cmp rax, header_buffer_len
     jnz invalid_in_file_header
 
-    ;TODO move header_buffer to rbx
+    ;TODO move header_buffer to rbx - unnecessary
 
     ;number of channels    
     lea rax, [rsi + 22]
@@ -178,18 +185,78 @@ CMAIN:
     sar eax, 1
     mov [half_data_len], eax
 
-    ;data sect1on
-    vmovq xmm1, rax
+    ;allocate buffer for signal segment
+    ;won't work with AVX2 because of the unaligned returned address
+    ;mov rcx, [data_len]
+    ;mov rdx, 4
+    ;call calloc
+    ;cmp rax, 0
+    ;jz memory_allocation_err
+    ;mov [signal_ptr], rax
     
+    mov rcx, 32
+    mov rdx, [data_len]
+    call aligned_alloc
+    cmp rax, 0
+    jz memory_allocation_err
+    mov [signal_ptr], rax
+    
+    ;TODO unnecessary
+    ;signal_ptr
+    ;vmovq xmm1, rax
+    
+    ;prepare counter for writing to signal_ptr
+    xor rcx, rcx
+    mov [signal_counter], rcx
+    
+    ;read fd_in to buffer_len
     mov rdi, [fd_in]
     mov rsi, buffer
     mov rdx, buffer_len
     call read_file
-    ;TODO cmp rax with 0 and then with buffer len
+    ;TODO cmp rax with 0 - end of file, move on to next phase
     
+    ;load buffer address into rax
     lea rax, [rsi]
-    vmovdqu ymm0, [rax]
-;    vmovdqa ymm0, [rax]
+    ;load first 256 bits from buffer (16 shorts = 32B)
+    vmovdqa ymm0, [rax]
+    ;save for after the shifting
+    vmovdqa ymm15, ymm0
+
+    ;extend lower 8 shorts as 8 ints
+    vmovdqa ymm2, ymm0   
+    vpmovsxwd ymm3, xmm2
+    
+    ;vpsrldq ymm2, ymm2, 8 - right byte shifting - useless here - doesn't cross boundary between upper and lower
+    ;permute the register so that the upper 16B are moved down    
+    ;0b01'00'11'10 (order of resulting quad words (32B = 4*8B = 4*QW)
+    ;each of these pairs represents the index of each quad word in the result of the perm
+    ;78 is the decimal representation of the binary string
+    vpermq ymm2, ymm2, 78     
+    
+    ;repeat extension
+    vpmovsxwd ymm4, xmm2
+    
+    ;convert 8 ints to floats
+    vcvtdq2ps ymm5, ymm3
+    vcvtdq2ps ymm6, ymm4
+    
+    ;write floats to [signal_ptr]
+    mov rcx, [signal_counter]
+    vmovdqu [signal_ptr+rcx], ymm5
+    add rcx, 32
+    vmovdqu [signal_ptr+rcx], ymm6
+    mov [signal_counter], rcx
+    
+    ;repeat processing until end of file
+    
+    ;start the FFT
+    
+    ;write results of FFT to [fd_out]
+    
+    ;free up resources
+    mov rdi, [signal_ptr]
+    call free
 
     mov rdi, [fd_out]
     call close_file
@@ -202,6 +269,14 @@ CMAIN:
     ret
 _nop:
     ret
+memory_allocation_err:
+    PRINT_STRING memory_allocation_err_str
+    NEWLINE
+    call exit
+invlid_in_file_read_err:
+    PRINT_STRING invlid_in_file_read_str
+    NEWLINE
+    call exit
 read_file:
     ;file descriptor in rdi
     ;buffer to read to in rsi
