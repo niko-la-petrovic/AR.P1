@@ -90,6 +90,8 @@ section .bss
     buffer: resb buffer_len
     %define header_buffer_len 44;WAV file header
     header_buffer: resb header_buffer_len
+    
+    signal_ptr_len: resb 4
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -185,36 +187,66 @@ CMAIN:
     sar eax, 1
     mov [half_data_len], eax
 
-    ;allocate buffer for signal segment
-    ;won't work with AVX2 because of the unaligned returned address
-    ;mov rcx, [data_len]
-    ;mov rdx, 4
-    ;call calloc
-    ;cmp rax, 0
-    ;jz memory_allocation_err
-    ;mov [signal_ptr], rax
-    
-    mov rcx, 32
-    mov rdx, [data_len]
+    ;data_len is the size of all shorts -> 
+    ;align signal_ptr_len size for optimized AVX
+    xor rdx, rdx
+    xor rax, rax
+    mov eax, [data_len]
+    mov rbx, 32
+    div rbx
+    ;remainder in rdx
+    mov rax, 32
+    sub eax, edx
+    mov edx, eax
+    ;add remainder to enable alignment
+    xor rax, rax
+    mov eax, [data_len]
+    add eax, edx
+    ;2x since we'll convert each short to a float
+    shl rax, 1
+    mov [signal_ptr_len], eax
+
+    ;allocate aligned for AVX
+    xor esi, esi
+    mov esi, [signal_ptr_len]
+    mov rdi, 32
     call aligned_alloc
     cmp rax, 0
     jz memory_allocation_err
     mov [signal_ptr], rax
     
-    ;TODO unnecessary
-    ;signal_ptr
-    ;vmovq xmm1, rax
-    
     ;prepare counter for writing to signal_ptr
     xor rcx, rcx
     mov [signal_counter], rcx
     
+    ;process .WAV data sect1on and write signal floats into signal_ptr
+    call rsws
+    
+    ;start the FFT
+    
+    ;write results of FFT to [fd_out]
+    
+    ;free up resources
+    mov rdi, [signal_ptr]
+    call free
+
+    mov rdi, [fd_out]
+    call close_file
+
+    mov rdi, [fd_in]
+    call close_file 
+    ;printl goodbye_str, goodbye_str_len
+                            
+    xor rax, rax
+    ret
+rsws:
     ;read fd_in to buffer_len
     mov rdi, [fd_in]
     mov rsi, buffer
     mov rdx, buffer_len
     call read_file
-    ;TODO cmp rax with 0 - end of file, move on to next phase
+    cmp rax, 0
+    jz _nop
     
     ;load buffer address into rax
     lea rax, [rsi]
@@ -243,29 +275,17 @@ CMAIN:
     
     ;write floats to [signal_ptr]
     mov rcx, [signal_counter]
-    vmovdqu [signal_ptr+rcx], ymm5
+
+    mov rax, [signal_ptr]
+    vmovdqu [rax+rcx], ymm5
     add rcx, 32
-    vmovdqu [signal_ptr+rcx], ymm6
+    vmovdqu [rax+rcx], ymm6
+    add rcx, 32
+    
     mov [signal_counter], rcx
     
     ;repeat processing until end of file
-    
-    ;start the FFT
-    
-    ;write results of FFT to [fd_out]
-    
-    ;free up resources
-    mov rdi, [signal_ptr]
-    call free
-
-    mov rdi, [fd_out]
-    call close_file
-
-    mov rdi, [fd_in]
-    call close_file 
-    ;printl goodbye_str, goodbye_str_len
-                            
-    xor rax, rax
+    jmp rsws
     ret
 _nop:
     ret
