@@ -139,10 +139,8 @@ CMAIN:
     mov rsi, filename
     call write_file
     
-    mov rdx, 1
-    mov rsi, null_byte
-    call write_file
-    
+    call write_delimiter
+        
     mov rax, sys_time
     mov rdi, last_time
     syscall
@@ -151,6 +149,8 @@ CMAIN:
     mov rdx, 8
     mov rsi, last_time
     call write_file
+    
+    call write_delimiter
 
     mov rdi, [fd_in]
     mov rsi, header_buffer
@@ -158,8 +158,6 @@ CMAIN:
     call read_file
     cmp rax, header_buffer_len
     jnz invalid_in_file_header
-
-    ;TODO move header_buffer to rbx - unnecessary
 
     ;number of channels    
     lea rax, [rsi + 22]
@@ -188,7 +186,7 @@ CMAIN:
     mov [half_data_len], eax
 
     ;data_len is the size of all shorts -> 
-    ;align signal_ptr_len size for optimized AVX
+    ;align signal_ptr and size for optimized AVX
     xor rdx, rdx
     xor rax, rax
     mov eax, [data_len]
@@ -206,7 +204,7 @@ CMAIN:
     shl rax, 1
     mov [signal_ptr_len], eax
 
-    ;allocate aligned for AVX
+    ;allocate aligned ptr for AVX
     xor esi, esi
     mov esi, [signal_ptr_len]
     mov rdi, 32
@@ -221,6 +219,22 @@ CMAIN:
     
     ;process .WAV data sect1on and write signal floats into signal_ptr
     call rsws
+
+    ;write signal len to out
+    mov rdi, [fd_out]
+    mov rdx, 4
+    mov rsi, signal_ptr_len
+    call write_file
+    ;delimiter
+    call write_delimiter
+    
+    ;write signal to out
+    mov rdi, [fd_out]
+    mov rdx, [signal_ptr_len]
+    mov rsi, [signal_ptr]
+    call write_file
+    ;delimiter
+    call write_delimiter
     
     ;start the FFT
     
@@ -238,6 +252,11 @@ CMAIN:
     ;printl goodbye_str, goodbye_str_len
                             
     xor rax, rax
+    ret
+write_delimiter:
+    mov rdx, 1
+    mov rsi, null_byte
+    call write_file
     ret
 rsws:
     ;read fd_in to buffer_len
@@ -277,9 +296,9 @@ rsws:
     mov rcx, [signal_counter]
 
     mov rax, [signal_ptr]
-    vmovdqu [rax+rcx], ymm5
+    vmovaps [rax+rcx], ymm5
     add rcx, 32
-    vmovdqu [rax+rcx], ymm6
+    vmovaps [rax+rcx], ymm6
     add rcx, 32
     
     mov [signal_counter], rcx
