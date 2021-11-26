@@ -68,7 +68,7 @@ section .rodata
     
     max_str_len: db 0xffffffffffffffff
     null_byte: db 0
-    samples_const: dq 1024    
+    samples_const: dq 2;TODO 1024
     
     s_signal_ptr: dq -8
     s_signal_ptr_len: dq -16
@@ -287,7 +287,7 @@ fft_windowed:
     jmp fft_windowed
 fft:
     ;signal pointer in rsi
-    ;signal sample length in rdx
+    ;signal pointer len in rdx
     
     push rsi
     push rdx
@@ -358,16 +358,66 @@ fft:
    
     ;call fft recursively on even and odd signal ptr
     ;save stack
+    mov rdx, [rsp+16]
+    mov rax, [rsp+8]
+    push rsi;signal ptr
+    push rdx;signal ptr len
+    push rax;spec_comp_ptr
+    push r9;half signal len
+    push r10;even signal ptr
+    push r11;odd signal ptr
+    
+    ;call fft
+    mov rsi, r10
+    mov rdx, r9
+    call fft
+    mov r12, rax;even spec comps ptr
     
     ;restore stack
+    pop r11
+    pop r10
+    pop r9
+    pop rax
+    pop rdx
+    pop rsi
     
     ;save stack
+    ;mov rdx, [rsp+16]
+    ;mov rax, [rsp+8]
+    ;push rsi;signal ptr
+    ;push rdx;signal ptr len
+    ;push rax;spec_comp_ptr
+    ;push r9;half signal len
+    ;push r10;even signal ptr
+    ;push r11;odd signal ptr
+    ;push r12;even spec comps ptr
+    
+    ;call fft
+    ;mov rsi, r11
+    ;mov rdx, r9
+    ;call fft
+    ;mov r13, rax;odd spec comps ptr
     
     ;restore stack
+    ;pop r12
+    ;pop r11
+    ;pop r10
+    ;pop r9
+    ;pop rax
+    ;pop rdx
+    ;pop rsi
     
     ;calculate spectral compnoents
     
+    
     ;cleanup
+    ;mov rdi, r13;odd spec comps ptr
+    ;call free
+    ;mov rdi, r12;even spec comps ptr
+    ;call free
+    ;mov rdi, r11;odd signal ptr
+    ;call free
+    ;mov rdi, r10;even signal ptr
     
     pop r9
     pop rax
@@ -409,16 +459,15 @@ fft_sig_cp_odd:
 
     jmp fft_sig_cp_odd
 fft_term:
-    ;TODO clear up stack
-    pop rax    
-    pop rdx
-    pop rsi
+    ;clear up stack
+    pop rax;spectral components ptr
+    pop rdx;signal ptr len
+    pop rsi;signal ptr
     
     ;TODO set spectral_component_ptr[0]=signal_ptr[0]    
-    mov r8, rax
-    mov r9, rsi
-    mov rsi, [rsi]
+    mov esi, [rsi]
     mov [rax], esi
+    mov dword [rax+4], 0
     
     ;return spectral_component_ptr via rax
 
