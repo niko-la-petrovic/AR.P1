@@ -67,7 +67,16 @@ section .rodata
     format_int: db "%d", 0
     
     max_str_len: db 0xffffffffffffffff
-    null_byte: db 0    
+    null_byte: db 0
+    samples_const: dq 1024    
+    
+    s_signal_ptr: dq -8
+    s_signal_ptr_len: dq -16
+    s_spec_comps_ptr: dq -24
+    s_even_signal_ptr: dq -32
+    s_odd_signal_ptr: dq -40
+    s_even_spec_comps_ptr: dq -48
+    s_odd_spec_comps_ptr: dq -56
 section .data
     last_time: dq 1
     signal_counter: dq 1
@@ -236,10 +245,185 @@ CMAIN:
     ;delimiter
     call write_delimiter
     
-    ;start the FFT
+    ;prepare for the fft
+    mov qword [signal_counter], 0
     
+    ;windowed fft
+    call fft_windowed
+    
+    ;cleanup
+    call finish
+    
+    xor rax, rax
+    ret
+fft_windowed:
+    ;out of bounds check
+    mov rax, [signal_ptr_len]
+    mov rcx, [signal_counter]
+    cmp rax, rcx
+    jle _nop
+    
+    ;ensure enough data
+    sub rax, rcx
+    cmp rax, [samples_const]
+    jl _nop
+    
+    ;fft
+    mov rax, [signal_ptr]
+    add rax, rcx
+    mov rsi, rax
+    mov rdx, [samples_const]
+    call fft
+    
+    ;TODO
     ;write results of FFT to [fd_out]
+    ;free memory from rax
     
+    ;next samples
+    mov rcx, [signal_counter]
+    add rcx, [samples_const]
+    mov [signal_counter], rcx
+    
+    jmp fft_windowed
+fft:
+    ;signal pointer in rsi
+    ;signal sample length in rdx
+    
+    push rsi
+    push rdx
+    
+    ;each complex number is two floats - 8B
+    mov rax, 8
+    mul rdx
+    
+    ;allocate spec_comp_ptr
+    mov rsi,rax
+    mov rdi, 32
+    call aligned_alloc
+    cmp rax, 0
+    jz memory_allocation_err
+    
+    mov r8, rax
+    push rax
+
+    ;check recursion termination
+    mov rdx, [rsp+8]
+    cmp rdx, 1
+    jz fft_term
+    
+    ;get half signal length
+    mov r9, rdx
+    shr r9, 1
+    
+    push r9
+    
+    ;allocate even and odd signal ptr
+    mov rax, r9
+    ;shl rax, 2;half len * 4 for floats
+    push rax;temp save
+    
+    mov rsi, r9;half signal length
+    mov rdi, 4;float
+    call calloc
+    cmp rax, 0
+    jz memory_allocation_err
+    
+    ;even signal ptr
+    mov r10, rax
+    
+    pop rax;temp restore
+    mov rsi, rax
+    mov rdi, 4;float
+    call calloc
+    cmp rax, 0
+    jz memory_allocation_err
+    
+    ;odd signal ptr
+    mov r11, rax
+
+    ;copy values to even and odd signal ptr
+    mov r9, [rsp];half signal len in r9
+    mov rsi, [rsp+24];signal_ptr in rsi
+    mov rdx, r10;dest ptr in rdx
+
+    ;even
+    xor rcx, rcx
+    call fft_sig_cp_even
+
+    mov rdx, r11
+    
+    ;odd
+    xor rcx, rcx
+    call fft_sig_cp_odd
+   
+    ;call fft recursively on even and odd signal ptr
+    ;save stack
+    
+    ;restore stack
+    
+    ;save stack
+    
+    ;restore stack
+    
+    ;calculate spectral compnoents
+    
+    ;cleanup
+    
+    pop r9
+    pop rax
+    pop rdx
+    pop rsi
+    
+    ret
+fft_sig_cp_even:
+    ;signal_ptr in rsi
+    ;dest ptr in rdx
+    ;half signal len in r9
+    cmp r9, rcx
+    jle _nop
+    
+    mov rdi, rcx
+    shl rdi, 1
+    
+    mov eax, [rsi+rdi*4]
+    lea rdi, [rdx + rcx*4]
+    mov [rdi], eax
+    inc rcx
+    
+    jmp fft_sig_cp_even
+fft_sig_cp_odd:
+    ;signal_ptr in rsi
+    ;dest ptr in rdx
+    ;half signal len in r9
+    cmp r9, rcx
+    jle _nop
+
+    mov rdi, rcx
+    shl rdi, 1
+    inc rdi
+    
+    mov eax, [rsi + rdi*4]
+    lea rdi, [rdx + rcx*4]
+    mov [rdi], eax
+    inc rcx
+
+    jmp fft_sig_cp_odd
+fft_term:
+    ;TODO clear up stack
+    pop rax    
+    pop rdx
+    pop rsi
+    
+    ;TODO set spectral_component_ptr[0]=signal_ptr[0]    
+    mov r8, rax
+    mov r9, rsi
+    mov rsi, [rsi]
+    mov [rax], esi
+    
+    ;return spectral_component_ptr via rax
+
+    ret
+finish:
     ;free up resources
     mov rdi, [signal_ptr]
     call free
@@ -250,8 +434,7 @@ CMAIN:
     mov rdi, [fd_in]
     call close_file 
     ;printl goodbye_str, goodbye_str_len
-                            
-    xor rax, rax
+                
     ret
 write_delimiter:
     mov rdx, 1
