@@ -364,35 +364,35 @@ fft:
     mov rsi, [rsp+s_signal_ptr];signal_ptr in rsi
     mov rdx, [rsp+s_odd_signal_ptr];dest ptr in rdx
     mov r9, [rsp+s_half_sample_count];half sample count in r9
-    xor rcx, rcx
+    xor rcx, rcx;number of floats copied so far in rcx
     call fft_sig_cp_odd
    
     ;call fft recursively on even and odd signal ptr
-    
     ;fft on even signal ptr
-    ;mov rsi, r10
-    ;mov rdx, r9
-    ;call fft
-    ;mov r12, rax;even spec comps ptr
+    mov rsi, [rsp+s_even_signal_ptr]
+    mov rdx, [rsp+s_half_sample_count]
+    call fft
+    ;even spec comps ptr
+    mov [rsp+s_even_spec_comps_ptr], rax
     
-    ;call fft
-    ;mov rsi, r11
-    ;mov rdx, r9
-    ;call fft
-    ;mov r13, rax;odd spec comps ptr
-    
+    ;fft on odd signal ptr
+    mov rsi, [rsp+s_odd_signal_ptr]
+    mov rdx, [rsp+s_half_sample_count]
+    call fft
+    ;odd spec comps ptr
+    mov [rsp+s_odd_spec_comps_ptr], rax
     
     ;calculate spectral compnoents
     
     
     ;cleanup
+    ;odd spec comps ptr
+    mov rdi, [rsp+s_odd_spec_comps_ptr]
+    call free
     
-    ;mov rdi, r13;odd spec comps ptr
-    ;call free
-    
-    ;mov r12, [rsp+s_even_spec_comps_ptr ]
-    ;mov rdi, r12;even spec comps ptr
-    ;call free
+    ;even spec comps ptr
+    mov rdi, [rsp+s_even_spec_comps_ptr]
+    call free
     
     ;odd signal ptr
     mov rdi, [rsp+s_odd_signal_ptr]
