@@ -70,13 +70,14 @@ section .rodata
     null_byte: db 0
     samples_const: dq 2;TODO 1024
     
-    s_signal_ptr: dq -8
-    s_signal_ptr_len: dq -16
-    s_spec_comps_ptr: dq -24
-    s_even_signal_ptr: dq -32
-    s_odd_signal_ptr: dq -40
-    s_even_spec_comps_ptr: dq -48
-    s_odd_spec_comps_ptr: dq -56
+    %define s_signal_ptr 56
+    %define s_signal_sample_count 48
+    %define s_spec_comps_ptr 40
+    %define s_half_sample_count 32
+    %define s_even_signal_ptr 24
+    %define s_odd_signal_ptr 16
+    %define s_even_spec_comps_ptr 8
+    %define s_odd_spec_comps_ptr 0
 section .data
     last_time: dq 1
     signal_counter: dq 1
@@ -246,6 +247,8 @@ CMAIN:
     
     ;prepare for the fft
     mov qword [signal_counter], 0
+    xor rdx, rdx
+    mov edx, [data_len]
     
     ;windowed fft
     call fft_windowed
@@ -258,8 +261,7 @@ CMAIN:
 fft_windowed:
     ;out of bounds check
     xor rax, rax
-    ;mov eax, [data_len]
-    mov eax, [samples_const];TODO remove
+    mov eax, [data_len]
     mov rcx, [signal_counter]
     cmp rax, rcx
     jle _nop
@@ -293,27 +295,34 @@ fft_windowed:
     jmp fft_windowed
 fft:
     ;signal pointer in rsi
-    ;signal pointer len in rdx
+    ;signal sample count in rdx
+
+    ;return spec comps ptr in rax
     
-    push rsi
-    push rdx
+    push rsi;signal ptr 56
+    push rdx;signal sample count 48
+    push r8;spec comps ptr 40
+    push r9;half sample count 32
+    push r10;even signal ptr 24
+    push r11;odd signal ptr 16
+    push r12;even spec comps ptr 8
+    push r13;odd spec comps ptr 0
     
     ;each complex number is two floats - 8B
     mov rax, 8
     mul rdx
     
     ;allocate spec_comp_ptr
-    mov rsi,rax
+    mov rsi,rax;sample count * 8B for complex numbers
     mov rdi, 32
     call aligned_alloc
     cmp rax, 0
     jz memory_allocation_err
     
-    mov r8, rax
-    push rax
-
+    mov [rsp+s_spec_comps_ptr], rax
+    
     ;check recursion termination
-    mov rdx, [rsp+8]
+    mov rdx, [rsp+s_signal_sample_count]
     cmp rdx, 1
     jz fft_term
     
@@ -321,82 +330,50 @@ fft:
     mov r9, rdx
     shr r9, 1
     
-    push r9
+    mov [rsp+s_half_sample_count], r9
     
     ;allocate even and odd signal ptr
-    mov rax, r9
-    push rax;temp save
-    
+    ;even signal
     mov rsi, r9;half signal length
     mov rdi, 4;float
     call calloc
     cmp rax, 0
     jz memory_allocation_err
     
-    ;even signal ptr
-    mov r10, rax
+    mov [rsp+s_even_signal_ptr], rax
     
-    pop rax;temp restore
-    mov rsi, rax
+    ;even signal ptr
+    mov rsi, [rsp+s_half_sample_count]
     mov rdi, 4;float
     call calloc
     cmp rax, 0
     jz memory_allocation_err
     
     ;odd signal ptr
-    mov r11, rax
+    mov [rsp+s_odd_signal_ptr], rax
 
     ;copy values to even and odd signal ptr
-    mov r9, [rsp];half signal len in r9
-    mov rsi, [rsp+24];signal_ptr in rsi
-    mov rdx, r10;dest ptr in rdx
-
-    ;even
-    xor rcx, rcx
+    ;even signal ptr
+    mov rsi, [rsp+s_signal_ptr];signal_ptr in rsi
+    mov rdx, [rsp+s_even_signal_ptr];dest ptr in rdx
+    mov r9, [rsp+s_half_sample_count];half sample count in r9
+    xor rcx, rcx;number of floats copied so far in rcx
     call fft_sig_cp_even
-
-    mov rdx, r11
     
-    ;odd
+    ;odd signal ptr
+    mov rsi, [rsp+s_signal_ptr];signal_ptr in rsi
+    mov rdx, [rsp+s_odd_signal_ptr];dest ptr in rdx
+    mov r9, [rsp+s_half_sample_count];half sample count in r9
     xor rcx, rcx
     call fft_sig_cp_odd
    
     ;call fft recursively on even and odd signal ptr
-    ;save stack
-    mov rdx, [rsp+16]
-    mov rax, [rsp+8]
-    
-    push rsi;signal ptr
-    push rdx;signal ptr len
-    push rax;spec_comp_ptr
-    push r9;half signal len
-    push r10;even signal ptr
-    push r11;odd signal ptr
     
     ;fft on even signal ptr
-    mov rsi, r10
-    mov rdx, r9
-    call fft
-    mov r12, rax;even spec comps ptr
-    
-    ;restore stack
-    pop r11
-    pop r10
-    pop r9
-    pop rax
-    pop rdx
-    pop rsi
-    
-    ;save stack
-    mov rdx, [rsp+16]
-    mov rax, [rsp+8]
-    ;push rsi;signal ptr
-    ;push rdx;signal ptr len
-    ;push rax;spec_comp_ptr
-    ;push r9;half signal len
-    ;push r10;even signal ptr
-    ;push r11;odd signal ptr
-    ;push r12;even spec comps ptr
+    ;mov rsi, r10
+    ;mov rdx, r9
+    ;call fft
+    ;mov r12, rax;even spec comps ptr
     
     ;call fft
     ;mov rsi, r11
@@ -404,52 +381,42 @@ fft:
     ;call fft
     ;mov r13, rax;odd spec comps ptr
     
-    ;restore stack
-    ;pop r12
-    ;pop r11
-    ;pop r10
-    ;pop r9
-    ;pop rax
-    ;pop rdx
-    ;pop rsi
     
     ;calculate spectral compnoents
     
     
     ;cleanup
-    ;push rax
-    push r10
-    push r11
-    push r12
     
     ;mov rdi, r13;odd spec comps ptr
     ;call free
     
-    pop r12
-    mov rdi, r12;even spec comps ptr
+    ;mov r12, [rsp+s_even_spec_comps_ptr ]
+    ;mov rdi, r12;even spec comps ptr
+    ;call free
+    
+    ;odd signal ptr
+    mov rdi, [rsp+s_odd_signal_ptr]
     call free
     
-    pop r11
-    mov rdi, r11;odd signal ptr
+    ;even signal ptr
+    mov rdi, [rsp+s_even_signal_ptr]
     call free
-    
-    pop r10
-    mov rdi, r10;even signal ptr
-    call free
-    
-    ;pop rax
     
     ;restore stack
-    pop r9
-    pop rax
-    pop rdx
-    pop rsi
+    pop r13;odd spec comps ptr 0
+    pop r12;even spec comps ptr 8
+    pop r11;odd signal ptr 16
+    pop r10;even signal ptr 24
+    pop r9;half sample count 32
+    pop r8;spec comps ptr 40
+    pop rdx;signal sample count 48
+    pop rsi;signal ptr 56
     
     ret
 fft_sig_cp_even:
     ;signal_ptr in rsi
     ;dest ptr in rdx
-    ;half signal len in r9
+    ;half sample count in r9
     ;number of floats copied so far in rcx
     cmp r9, rcx
     jle _nop
@@ -466,7 +433,7 @@ fft_sig_cp_even:
 fft_sig_cp_odd:
     ;signal_ptr in rsi
     ;dest ptr in rdx
-    ;half signal len in r9
+    ;half sample count in r9
     ;number of floats copied so far in rcx
     cmp r9, rcx
     jle _nop
@@ -482,12 +449,21 @@ fft_sig_cp_odd:
 
     jmp fft_sig_cp_odd
 fft_term:
-    ;clear up stack
-    pop rax;spectral components ptr
-    pop rdx;signal ptr len
-    pop rsi;signal ptr
+    ;clean up stack
+    pop r13;odd spec comps ptr 0
+    pop r12;even spec comps ptr 8
+    pop r11;odd signal ptr 16
+    pop r10;even signal ptr 24
+    pop r9;half sample count 32
+    pop r8;spec comps ptr 40
+    pop rdx;signal sample count 48
+    pop rsi;signal ptr 56
     
-    ;set spectral_component_ptr[0]=signal_ptr[0]    
+    mov rax, r8;spec comps ptr
+    ;spec comps ptr in rax
+    ;signal ptr in rsi
+    
+    ;set spec comps ptr[0]=signal ptr[0]    
     mov esi, [rsi]
     mov [rax], esi;real
     mov dword [rax+4], 0;imag
