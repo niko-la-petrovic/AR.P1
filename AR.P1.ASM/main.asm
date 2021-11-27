@@ -100,7 +100,7 @@ section .bss
     %define header_buffer_len 44;WAV file header
     header_buffer: resb header_buffer_len
     
-    signal_ptr_len: resb 4
+    signal_ptr_len: resq 1
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -211,11 +211,10 @@ CMAIN:
     add eax, edx
     ;2x since we'll convert each short to a float
     shl rax, 1
-    mov [signal_ptr_len], eax
+    mov [signal_ptr_len], rax
 
     ;allocate aligned ptr for AVX
-    xor esi, esi
-    mov esi, [signal_ptr_len]
+    mov rsi, [signal_ptr_len]
     mov rdi, 32
     call aligned_alloc
     cmp rax, 0
@@ -231,7 +230,7 @@ CMAIN:
 
     ;write signal len to out
     mov rdi, [fd_out]
-    mov rdx, 4
+    mov rdx, 8
     mov rsi, signal_ptr_len
     call write_file
     ;delimiter
@@ -258,7 +257,9 @@ CMAIN:
     ret
 fft_windowed:
     ;out of bounds check
-    mov rax, [signal_ptr_len]
+    xor rax, rax
+    ;mov eax, [data_len]
+    mov eax, 2;TODO remove
     mov rcx, [signal_counter]
     cmp rax, rcx
     jle _nop
@@ -269,15 +270,20 @@ fft_windowed:
     jl _nop
     
     ;fft
+    ;move along signal ptr to the rcx-th sample
     mov rax, [signal_ptr]
-    add rax, rcx
+    lea rax, [rax+rcx*4]
     mov rsi, rax
     mov rdx, [samples_const]
-    call fft
+    ;call fft
+
+    push rax
+    ;TODO write results of FFT to [fd_out]
     
-    ;TODO
-    ;write results of FFT to [fd_out]
     ;free memory from rax
+    pop rax
+    ;mov rdi, rax
+    ;call free
     
     ;next samples
     mov rcx, [signal_counter]
@@ -360,6 +366,7 @@ fft:
     ;save stack
     mov rdx, [rsp+16]
     mov rax, [rsp+8]
+    
     push rsi;signal ptr
     push rdx;signal ptr len
     push rax;spec_comp_ptr
@@ -367,7 +374,7 @@ fft:
     push r10;even signal ptr
     push r11;odd signal ptr
     
-    ;call fft
+    ;fft on even signal ptr
     mov rsi, r10
     mov rdx, r9
     call fft
@@ -382,8 +389,8 @@ fft:
     pop rsi
     
     ;save stack
-    ;mov rdx, [rsp+16]
-    ;mov rax, [rsp+8]
+    mov rdx, [rsp+16]
+    mov rax, [rsp+8]
     ;push rsi;signal ptr
     ;push rdx;signal ptr len
     ;push rax;spec_comp_ptr
@@ -411,14 +418,29 @@ fft:
     
     
     ;cleanup
+    ;push rax
+    push r10
+    push r11
+    push r12
+    
     ;mov rdi, r13;odd spec comps ptr
     ;call free
-    ;mov rdi, r12;even spec comps ptr
-    ;call free
-    ;mov rdi, r11;odd signal ptr
-    ;call free
-    ;mov rdi, r10;even signal ptr
     
+    pop r12
+    mov rdi, r12;even spec comps ptr
+    call free
+    
+    pop r11
+    mov rdi, r11;odd signal ptr
+    call free
+    
+    pop r10
+    mov rdi, r10;even signal ptr
+    call free
+    
+    ;pop rax
+    
+    ;restore stack
     pop r9
     pop rax
     pop rdx
@@ -464,10 +486,10 @@ fft_term:
     pop rdx;signal ptr len
     pop rsi;signal ptr
     
-    ;TODO set spectral_component_ptr[0]=signal_ptr[0]    
+    ;set spectral_component_ptr[0]=signal_ptr[0]    
     mov esi, [rsi]
-    mov [rax], esi
-    mov dword [rax+4], 0
+    mov [rax], esi;real
+    mov dword [rax+4], 0;imag
     
     ;return spectral_component_ptr via rax
 
