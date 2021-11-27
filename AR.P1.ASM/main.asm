@@ -259,7 +259,7 @@ fft_windowed:
     ;out of bounds check
     xor rax, rax
     ;mov eax, [data_len]
-    mov eax, 2;TODO remove
+    mov eax, [samples_const];TODO remove
     mov rcx, [signal_counter]
     cmp rax, rcx
     jle _nop
@@ -275,15 +275,15 @@ fft_windowed:
     lea rax, [rax+rcx*4]
     mov rsi, rax
     mov rdx, [samples_const]
-    ;call fft
+    call fft
 
     push rax
     ;TODO write results of FFT to [fd_out]
     
     ;free memory from rax
     pop rax
-    ;mov rdi, rax
-    ;call free
+    mov rdi, rax
+    call free
     
     ;next samples
     mov rcx, [signal_counter]
@@ -325,7 +325,6 @@ fft:
     
     ;allocate even and odd signal ptr
     mov rax, r9
-    ;shl rax, 2;half len * 4 for floats
     push rax;temp save
     
     mov rsi, r9;half signal length
@@ -451,6 +450,7 @@ fft_sig_cp_even:
     ;signal_ptr in rsi
     ;dest ptr in rdx
     ;half signal len in r9
+    ;number of floats copied so far in rcx
     cmp r9, rcx
     jle _nop
     
@@ -467,6 +467,7 @@ fft_sig_cp_odd:
     ;signal_ptr in rsi
     ;dest ptr in rdx
     ;half signal len in r9
+    ;number of floats copied so far in rcx
     cmp r9, rcx
     jle _nop
 
