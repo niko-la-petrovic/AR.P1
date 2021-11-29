@@ -66,6 +66,10 @@ section .rodata
     format_str: db "%s", 0
     format_int: db "%d", 0
     
+    sampling_rate: dd 44100
+    
+    pi: dd 3.141592653589793238462
+    neg2pi: dd -6.28318530717959
     max_str_len: db 0xffffffffffffffff
     null_byte: db 0
     samples_const: dq 2;TODO 1024
@@ -102,6 +106,13 @@ section .bss
     header_buffer: resb header_buffer_len
     
     signal_ptr_len: resq 1
+    shortBuffer: resb 2
+    
+    realBuffer: resd 1
+    imagBuffer: resd 1
+    
+    intBuffer: resd 1
+    longBuffer: resq 1
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -145,8 +156,8 @@ CMAIN:
     mov [fd_out], rax
     
     mov rdi, [fd_out]
-    mov rdx, filename_len
-    mov rsi, filename
+    mov rdx, filename_len;TODO use cli arg
+    mov rsi, filename;TODO use cli arg
     call write_file
     
     call write_delimiter
@@ -178,7 +189,7 @@ CMAIN:
     ;sampling rate
     lea rax, [rsi + 24]
     mov rax, [rax]
-    cmp eax, 44100    
+    cmp eax, [sampling_rate]   
 
     lea rax, [rsi + 34]
     movzx rax, WORD [rax]
@@ -227,6 +238,7 @@ CMAIN:
     mov [signal_counter], rcx
     
     ;process .WAV data sect1on and write signal floats into signal_ptr
+    ;call rsws
     call rsws
 
     ;write signal len to out
@@ -383,7 +395,12 @@ fft:
     mov [rsp+s_odd_spec_comps_ptr], rax
     
     ;calculate spectral compnoents
-    
+    xor rcx, rcx;samples processed in rcx
+    mov rdx, [rsp+s_half_sample_count];half sample count in rdx
+    mov rdi, [rsp+s_signal_sample_count];signal sample count in rdi
+    mov rsi, rsp;previous stack pointer in rsi
+    ;call fft_calc
+    call fft_calc_unoptimized
     
     ;cleanup
     ;odd spec comps ptr
@@ -413,6 +430,130 @@ fft:
     pop rsi;signal ptr 56
     
     ret
+fft_calc:
+    ;spec comps processed in rcx
+    ;half sample count in rdx
+    ;signal sample count in rdi
+    ;previous stack pointer in rsi
+    cmp rdx, rcx
+    jle _nop
+    
+    ;TODO AVX unoptimize
+    
+    ;each ymm register can hold 4 complex numbers
+    
+    ;theta = i / signal sample count * (-2*pi), where i=rcx
+    ;re: ymm0[0]=cos(theta)
+    ;im: ymm0[0]=sin(theta)
+    ;complex: ymm0=re,im
+    
+    ;complex: ymm1[0]=odd spec comps ptr[0]
+    
+    ;complex: ymm0=ymm0 * ymm1
+    
+    ;complex: spec comps ptr[0] = ymm0 + even spec comps ptr[0]
+    ;complex: spec comps ptr[half sample count + 0] = even spec comps ptr[0] - ymm0
+    
+    add rcx, 4
+
+    jmp fft_calc
+fft_calc_unoptimized:
+    ;spec comps processed in rcx
+    ;half sample count in rdx
+    ;signal sample count in rdi
+    ;previous stack pointer in rsi
+    cmp rdx, rcx
+    jle _nop
+
+    ;calculate odd offset
+    ;oddOffset = polar(1, -2pi*i/signalLength) * oddSpectralComponent[i]
+    ;(x+yi)(u+vi)=(xu - yv) + (xv + yu)i
+    
+    ;polar real
+    ;i
+    mov [longBuffer], rcx
+    fild qword [longBuffer]
+    ;/signalLength
+    mov [longBuffer], rdi
+    fdiv qword [longBuffer]
+    ;*-2pi
+    fmul qword [neg2pi]
+    
+    ;copy the angle
+    fld st0
+    ;cos(-2pi*i/signalLength)
+    fcos
+    fstp dword [realBuffer];x
+    
+    ;sin(-2pi*i/signalLength)
+    fsin
+    fstp dword [imagBuffer];y
+    
+    ;oddOffset real component = xu - yv
+    fld dword [realBuffer];x
+    fld st0;keep a copy of x for one more multiplication
+    
+    mov rax, [rsi+s_odd_spec_comps_ptr]
+    lea rax, [rax+rcx*8];address to load u and v from
+    fmul dword [rax];u => xu, x
+    
+    fld dword [imagBuffer];y => y, xu, x
+    fmul dword[rax+4];v => yv, xu, x
+    fchs; => -yv, xu, x
+            
+    fadd st1; => xu-yv, xu, x
+    fstp dword [realBuffer];xu-yv => xu, x
+            
+    ;oddOffset imag component = xv + yu
+    fstp st0; => x
+    fmul dword[rax+4];v => xv
+    fld dword [imagBuffer];y => y, xv
+    fmul dword [rax];u => yu, xv
+    
+    fadd st1;xv+yu, xv
+    fstp dword [imagBuffer];xv+yu => xv
+    fstp st0;clear
+    
+    ;spec comps[i] = even spec comps[i] + odd offset spec comp
+    ;(x+yi)+(u+vi) = (x+u)+(y+v)i
+    mov rax, [rsi+s_even_spec_comps_ptr]
+    lea rax, [rax+rcx*8];even spec comps[i]
+    mov r8, rax;temp save
+    fld dword [realBuffer];x => x
+    fadd dword [rax];u => x+u
+    fld dword [imagBuffer];y => y, x+u
+    fadd dword[rax+4];v => y+v, x+u
+    
+    ;TODO check if storage logic is good
+    ;TODO check if calculation logic is good
+    fstp dword [longBuffer+4];y+v
+    fstp dword [longBuffer];x+u
+    
+    mov rax, [rsi+s_spec_comps_ptr]
+    lea rax, [rax+rcx*8];spec comps[i]
+    mov r9, [longBuffer]
+    mov [rax], r9;
+    
+    ;spec comps[half sample count + i] = even spec comps [i] - odd offset spec comp
+    ;(x+yi)-(u+vi) = (x-u)+(y-v)i
+    mov rax, r8;temp restore
+    fld dword [realBuffer];x => x
+    fsub dword [rax];u => x-u
+    fld dword [imagBuffer];y => y, x-u
+    fsub dword[rax+4];v => y-v, x-u
+
+    fstp dword [longBuffer+4];y-v
+    fstp dword [longBuffer];x-u
+    
+    mov rax, [rsi+s_spec_comps_ptr]
+    lea rax, [rax+rdx]
+    lea rax, [rax+rcx*8];spec comps [half sample count + i]
+    mov r9, [longBuffer]
+    mov [rax], r9
+    
+    inc rcx
+    
+    jmp fft_calc_unoptimized
 fft_sig_cp_even:
     ;signal_ptr in rsi
     ;dest ptr in rdx
@@ -502,8 +643,6 @@ rsws:
     lea rax, [rsi]
     ;load first 256 bits from buffer (16 shorts = 32B)
     vmovdqa ymm0, [rax]
-    ;save for after the shifting
-    vmovdqa ymm15, ymm0
 
     ;extend lower 8 shorts as 8 ints
     vmovdqa ymm2, ymm0   
@@ -536,7 +675,28 @@ rsws:
     
     ;repeat processing until end of file
     jmp rsws
-    ret
+rsws_unoptimized:
+    ;read fd_in to buffer_len
+    mov rdi, [fd_in]
+    mov rsi, buffer
+    mov rdx, 2;load one short at a time
+    call read_file
+    cmp rax, 0
+    jz _nop
+    
+    ;take a short from the buffer and store in ST
+    fild word [rsi]
+    
+    ;write floats to [signal_ptr]
+    mov rcx, [signal_counter]
+    mov rax, [signal_ptr]
+    fstp dword [rax+rcx]
+
+    add rcx, 4
+    mov [signal_counter], rcx
+    
+    ;repeat processing until end of file
+    jmp rsws_unoptimized
 _nop:
     ret
 memory_allocation_err:
