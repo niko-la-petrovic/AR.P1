@@ -161,7 +161,7 @@ namespace AR.P1.DataGen
 
     public class DataGenOptions
     {
-        public long SampleCount => SamplingRate * SecondLength;
+        public int SampleCount => SamplingRate * SecondLength;
         public int SamplingRate { get; set; }
         public int SecondLength { get; set; }
         public WaveformShape WaveformShape { get; set; }
@@ -173,7 +173,7 @@ namespace AR.P1.DataGen
         public int SampleSize => BitDepth / 8;
         public double AngularFrequency => 2 * Math.PI * Frequency;
         public double SampleLength => 1.0 / SamplingRate;
-        public long DataSectionByteCount => SampleSize * SampleCount * ChannelCount;
+        public int DataSectionByteCount => SampleSize * SampleCount * ChannelCount;
     }
 
     public static class DataGenExtensions

@@ -367,3 +367,4 @@ FodyWeavers.xsd
 *.o
 AR.P1.ASM/main
 *.out
+/AR.P1.Cpp/output.bin
