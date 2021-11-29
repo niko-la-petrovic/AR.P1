@@ -158,8 +158,8 @@ int main(int argc, char** argv)
 	for (int i = 0; i < sampleCount; i += windowSize) {
 		complex<float>* specComps = fft_recurse(signalPtr + (int)i * windowSize, windowSize);
 
-		ofs.write((char*)specComps, windowSize * 8);
-		ofs.write(nullDelimiter, 1);
+		//ofs.write((char*)specComps, windowSize * 8);
+		//ofs.write(nullDelimiter, 1);
 		for (int j = 0; j < windowSize/2; j++) {
 			cout << abs(specComps[j]) << endl;
 		}
