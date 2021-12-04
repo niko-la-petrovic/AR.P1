@@ -40,7 +40,7 @@ std_err: equ 2
 %endmacro
 
 section .rodata
-    filename: db "/home/ubuntu/Documents/AR.P1-master/AR.P1.ASM/output.wav", 0
+    filename: db "/home/ubuntu/Documents/GitHub/AR.P1/AR.P1.ASM/output.wav", 0
     filename_len: equ $-filename
 
     out_filename: db "./output.bin", 0
