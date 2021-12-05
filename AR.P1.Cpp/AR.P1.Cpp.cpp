@@ -20,8 +20,10 @@ auto outFilePath = "output.bin";
 char nullDelimiter[1] = { 0 };
 
 //TODO clean up comments
-
+//TODO remove unused globals
 int windowSize = 4096;
+int counter = 0;
+float* s_signal_ptr;
 
 complex<float>* fft_recurse(const float* signal, const unsigned signalLength)
 {
@@ -114,6 +116,7 @@ int main(int argc, char** argv)
 
 	long sampleCount = dataBytes / 2;
 	float* signalPtr = new float[sampleCount];
+	s_signal_ptr = signalPtr;
 
 	for (int i = 0; i < sampleCount - 8; i += 16) {
 		//convert into floats to get the signal buffer
@@ -141,24 +144,26 @@ int main(int argc, char** argv)
 	ofstream ofs;
 	ofs.open(outFilePath, ios::out | ios::beg);
 
-	//write input file path
-	ofs.write(inFilePath.c_str(), inFilePath.length());
-	ofs.write(nullDelimiter, 1);
+	////write input file path
+	//ofs.write(inFilePath.c_str(), inFilePath.length());
+	//ofs.write(nullDelimiter, 1);
 
-	//write current milliseconds
-	auto startMillis = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-	ofs.write((char*)&startMillis, 8);
-	ofs.write(nullDelimiter, 1);
+	////write current milliseconds
+	//auto startMillis = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	//ofs.write((char*)&startMillis, 8);
+	//ofs.write(nullDelimiter, 1);
 
-	//write signal
-	ofs.write((char*)signalPtr, sampleCount * 4);
-	ofs.write(nullDelimiter, 1);
+	////write signal
+	//ofs.write((char*)signalPtr, sampleCount * 4);
+	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (int i = 0; i < sampleCount; i += windowSize) {
-		complex<float>* specComps = fft_recurse(signalPtr + (int)i * windowSize, windowSize);
+	for (int i = 0; i < sampleCount - windowSize; i += windowSize) {
+		counter = i;
 
-		//ofs.write((char*)specComps, windowSize * 8);
+		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
+
+		ofs.write((char*)specComps, windowSize * 8);
 		//ofs.write(nullDelimiter, 1);
 		for (int j = 0; j < windowSize/2; j++) {
 			cout << abs(specComps[j]) << endl;
