@@ -72,7 +72,7 @@ section .rodata
     neg2pi: dd -6.28318530717959
     max_str_len: db 0xffffffffffffffff
     null_byte: db 0
-    samples_const: dq 2;TODO 1024
+    samples_const: dq 2;TODO 4096 ;window size
     
     %define s_signal_ptr 56
     %define s_signal_sample_count 48
@@ -155,23 +155,21 @@ CMAIN:
     mov rax, [fd]
     mov [fd_out], rax
     
-    mov rdi, [fd_out]
-    mov rdx, filename_len;TODO use cli arg
-    mov rsi, filename;TODO use cli arg
-    call write_file
-    
-    call write_delimiter
+    ; mov rdi, [fd_out]
+    ; mov rdx, filename_len;TODO use cli arg
+    ; mov rsi, filename;TODO use cli arg
+    ; call write_file
+    ; call write_delimiter
         
     mov rax, sys_time
     mov rdi, last_time
     syscall
     
-    mov rdi, [fd_out]
-    mov rdx, 8
-    mov rsi, last_time
-    call write_file
-    
-    call write_delimiter
+    ; mov rdi, [fd_out]
+    ; mov rdx, 8
+    ; mov rsi, last_time
+    ; call write_file
+    ; call write_delimiter
 
     mov rdi, [fd_in]
     mov rsi, header_buffer
@@ -241,28 +239,26 @@ CMAIN:
     ;call rsws
     call rsws
 
-    ;write signal len to out
-    mov rdi, [fd_out]
-    mov rdx, 8
-    mov rsi, signal_ptr_len
-    call write_file
+    ;write signal len to fd_out
+    ; mov rdi, [fd_out]
+    ; mov rdx, 8
+    ; mov rsi, signal_ptr_len
+    ; call write_file
     ;delimiter
-    call write_delimiter
+    ; call write_delimiter
     
-    ;write signal to out
-    mov rdi, [fd_out]
-    mov rdx, [signal_ptr_len]
-    mov rsi, [signal_ptr]
-    call write_file
+    ;write signal to fd_out
+    ; mov rdi, [fd_out]
+    ; mov rdx, [signal_ptr_len]
+    ; mov rsi, [signal_ptr]
+    ; call write_file
     ;delimiter
-    call write_delimiter
+    ; call write_delimiter
     
-    ;prepare for the fft
+    ;prepare for the windowed fft
     mov qword [signal_counter], 0
     xor rdx, rdx
-    mov edx, [data_len]
-    
-    ;windowed fft
+    mov edx, [data_len]    
     call fft_windowed
     
     ;cleanup
@@ -273,7 +269,7 @@ CMAIN:
 fft_windowed:
     ;out of bounds check
     xor rax, rax
-    mov eax, [data_len]
+    mov eax, [half_data_len]
     mov rcx, [signal_counter]
     cmp rax, rcx
     jle _nop
@@ -291,8 +287,17 @@ fft_windowed:
     mov rdx, [samples_const]
     call fft
 
+    push rax;TODO the first sample in the output is correct, and the base case seems mostly accurate
+    ;write results of FFT to [fd_out]
+    mov rdi, [fd_out]
+    mov rax, [samples_const]
+    mov rcx, 8
+    mul rcx
+    mov rdx, rax
+    pop rax
     push rax
-    ;TODO write results of FFT to [fd_out]
+    mov rsi, rax
+    call write_file
     
     ;free memory from rax
     pop rax
@@ -429,6 +434,8 @@ fft:
     pop rdx;signal sample count 48
     pop rsi;signal ptr 56
     
+    mov rax, r8
+    
     ret
 fft_calc:
     ;spec comps processed in rcx
@@ -524,8 +531,6 @@ fft_calc_unoptimized:
     fld dword [imagBuffer];y => y, x+u
     fadd dword[rax+4];v => y+v, x+u
     
-    ;TODO check if storage logic is good
-    ;TODO check if calculation logic is good
     fstp dword [longBuffer+4];y+v
     fstp dword [longBuffer];x+u
     
@@ -537,16 +542,16 @@ fft_calc_unoptimized:
     ;spec comps[half sample count + i] = even spec comps [i] - odd offset spec comp
     ;(x+yi)-(u+vi) = (x-u)+(y-v)i
     mov rax, r8;temp restore
-    fld dword [realBuffer];x => x
-    fsub dword [rax];u => x-u
-    fld dword [imagBuffer];y => y, x-u
-    fsub dword[rax+4];v => y-v, x-u
+    fld dword [rax];x => x
+    fsub dword [realBuffer];u => x-u
+    fld dword [rax+4];y => y, x-u
+    fsub dword[imagBuffer];v => y-v, x-u
 
     fstp dword [longBuffer+4];y-v
     fstp dword [longBuffer];x-u
     
     mov rax, [rsi+s_spec_comps_ptr]
-    lea rax, [rax+rdx]
+    lea rax, [rax+rdx*8]
     lea rax, [rax+rcx*8];spec comps [half sample count + i]
     mov r9, [longBuffer]
     mov [rax], r9
