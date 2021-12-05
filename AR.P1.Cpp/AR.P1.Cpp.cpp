@@ -118,7 +118,7 @@ int main(int argc, char** argv)
 	float* signalPtr = new float[sampleCount];
 	s_signal_ptr = signalPtr;
 
-	for (int i = 0; i < sampleCount - 8; i += 16) {
+	for (int i = 0; i < sampleCount - 16; i += 16) {
 		//convert into floats to get the signal buffer
 		__m256i shortBuffer = {};
 		//read 16 shorts
@@ -142,7 +142,7 @@ int main(int argc, char** argv)
 	}
 
 	ofstream ofs;
-	ofs.open(outFilePath, ios::out | ios::beg);
+	ofs.open(outFilePath, ios::out | ios::beg | ios::binary);
 
 	////write input file path
 	//ofs.write(inFilePath.c_str(), inFilePath.length());
@@ -162,13 +162,15 @@ int main(int argc, char** argv)
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
-
-		ofs.write((char*)specComps, windowSize * 8);
-		//ofs.write(nullDelimiter, 1);
-		for (int j = 0; j < windowSize/2; j++) {
-			cout << abs(specComps[j]) << endl;
+		
+		if (specComps != nullptr) {
+			ofs.write((char*)specComps, windowSize * sizeof(complex<float>));
 		}
-		//delta f = fs / N (fs - sampling req, N - window size)
+		//ofs.write(nullDelimiter, 1);
+		/*for (int j = 0; j < windowSize/2; j++) {
+			cout << abs(specComps[j]) << endl;
+		}*/
+		//delta f = fs / N; //(fs - sampling req, N - window size)
 		delete[] specComps;
 	}
 
