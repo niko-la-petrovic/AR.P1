@@ -28,6 +28,9 @@ namespace AR.P1.DataGen
             public double Frequency { get; set; }
             [Option('b', "bit-depth", Required = false, HelpText = "Set the bit depth.", Default = 16)]
             public int BitDepth { get; set; }
+            [Option('a', "Amplitude", Required = false, HelpText = "Set the amplitude. If zero, will be made MaxAmplitude." +
+                " If not 0, Will be made equal to Min(Amplitude, MaxAmplitude ). MaxAmplitude = 2^(BitDepth - 1) - 1", Default = 0)]
+            public int Amplitude { get; set; }
         }
 
         static void Main(string[] args)
@@ -65,7 +68,7 @@ namespace AR.P1.DataGen
 
             for (long i = 0; i < dataGenOptions.SampleCount; i++)
             {
-                var amplitude = Math.Pow(2, dataGenOptions.BitDepth - 1) - 1;
+                var amplitude = dataGenOptions.Amplitude;
                 var displacement = amplitude * waveform(t);
                 var arrToWrite = getBytesToWrite(displacement);
 
@@ -161,6 +164,7 @@ namespace AR.P1.DataGen
 
     public class DataGenOptions
     {
+        public int Amplitude { get; set; }
         public int SampleCount => SamplingRate * SecondLength;
         public int SamplingRate { get; set; }
         public int SecondLength { get; set; }
@@ -180,6 +184,13 @@ namespace AR.P1.DataGen
     {
         public static DataGenOptions MapToOptions(this Program.Options options)
         {
+            var amplitude = options.Amplitude;
+            var maxAmplitude = Math.Pow(2, options.BitDepth - 1) - 1;
+            if (amplitude == 0)
+                amplitude = (int)maxAmplitude;
+            else
+                amplitude = (int)Math.Min(amplitude, maxAmplitude);
+
             return new DataGenOptions
             {
                 OutputFilePath = options.OutputFilePath,
@@ -188,6 +199,7 @@ namespace AR.P1.DataGen
                 WaveformShape = options.WaveformShape,
                 Frequency = options.Frequency,
                 BitDepth = (ushort)options.BitDepth,
+                Amplitude = amplitude
             };
         }
     }
