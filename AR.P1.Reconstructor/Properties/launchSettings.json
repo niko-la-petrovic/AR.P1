@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AR.P1.Reconstructor": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\Blue-Glass\\source\\repos\\AR.P1\\AR.P1.Cpp\\output.bin"
+    }
+  }
+}
