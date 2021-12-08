@@ -43,6 +43,7 @@ section .rodata
     filename: db "/home/ubuntu/Documents/GitHub/AR.P1/AR.P1.ASM/output.wav", 0
     filename_len: equ $-filename
 
+    ;running with f9 through SASM, output.bin will be in ~/
     out_filename: db "./output.bin", 0
     out_filename_len: equ $-out_filename
 
@@ -96,7 +97,7 @@ section .bss
     fd_out: resq 1
     
     data_len: resb 4
-    half_data_len: resb 4
+    half_data_len: resb 4;TODO remove
     signal_ptr: resq 1
 
     %define buffer_len 32;16 shorts
@@ -113,6 +114,8 @@ section .bss
     
     intBuffer: resd 1
     longBuffer: resq 1
+    
+    sample_count: resb 4    
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -201,8 +204,10 @@ CMAIN:
     mov [data_len], eax
     cmp eax, 0
     jz invalid_in_file_header
+    sar eax, 4;require a multiple of 16 for the algorithm to work optimized
+    sal eax, 4
     sar eax, 1
-    mov [half_data_len], eax
+    mov [sample_count], eax
 
     ;data_len is the size of all shorts -> 
     ;align signal_ptr and size for optimized AVX
@@ -237,7 +242,7 @@ CMAIN:
     
     ;process .WAV data sect1on and write signal floats into signal_ptr
     ;call rsws
-    call rsws
+    call rsws_unoptimized
 
     ;write signal len to fd_out
     ; mov rdi, [fd_out]
@@ -269,14 +274,14 @@ CMAIN:
 fft_windowed:
     ;out of bounds check
     xor rax, rax
-    mov eax, [half_data_len]
+    mov eax, [sample_count]
     mov rcx, [signal_counter]
-    cmp rax, rcx
+    cmp rax, rcx;sample_count <= signal_counter
     jle _nop
     
     ;ensure enough data
     sub rax, rcx
-    cmp rax, [samples_const]
+    cmp rax, [samples_const]; stop if remaining number of samples is less than the window size
     jl _nop
     
     ;fft
@@ -287,7 +292,7 @@ fft_windowed:
     mov rdx, [samples_const]
     call fft
 
-    push rax;TODO the first sample in the output is correct, and the base case seems mostly accurate
+    push rax
     ;write results of FFT to [fd_out]
     mov rdi, [fd_out]
     mov rax, [samples_const]
@@ -641,8 +646,8 @@ rsws:
     mov rsi, buffer
     mov rdx, buffer_len
     call read_file
-    cmp rax, 0
-    jz _nop
+    cmp rax, 32
+    jl _nop
     
     ;load buffer address into rax
     lea rax, [rsi]
@@ -681,13 +686,20 @@ rsws:
     ;repeat processing until end of file
     jmp rsws
 rsws_unoptimized:
+    ;ensure a multiple of 16 samples
+    mov rax, [sample_count]
+    mov rcx, [signal_counter]
+    sub rax, rcx
+    cmp rax, 0
+    jle _nop
+    
     ;read fd_in to buffer_len
     mov rdi, [fd_in]
     mov rsi, buffer
     mov rdx, 2;load one short at a time
     call read_file
-    cmp rax, 0
-    jz _nop
+    cmp rax, 2
+    jl _nop
     
     ;take a short from the buffer and store in ST
     fild word [rsi]
@@ -695,9 +707,9 @@ rsws_unoptimized:
     ;write floats to [signal_ptr]
     mov rcx, [signal_counter]
     mov rax, [signal_ptr]
-    fstp dword [rax+rcx]
+    fstp dword [rax+rcx*4]
 
-    add rcx, 4
+    inc rcx
     mov [signal_counter], rcx
     
     ;repeat processing until end of file

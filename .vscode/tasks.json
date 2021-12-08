@@ -47,7 +47,23 @@
             "label": "g++ build active file",
             "command": "/usr/bin/g++",
             "args": ["-g","${file}", "-o", "${fileDirname}/${fileBasenameNoExtension}",
-                "-std=c++17", "-lstdc++fs"
+                "-std=c++17", "-lstdc++fs", "-lm", "-march=native", "-ffast-math"
+            ],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "type": "shell",
+            "label": "gcc build active file",
+            "command": "/usr/bin/gcc",
+            "args": ["-g","${file}", "-o", "${fileDirname}/${fileBasenameNoExtension}",
+                "-std=c++17", "-lstdc++fs", "-lm", "-march=native", "-ffast-math"
             ],
             "options": {
                 "cwd": "/usr/bin"
