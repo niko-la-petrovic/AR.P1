@@ -21,7 +21,7 @@ char nullDelimiter[1] = { 0 };
 
 //TODO clean up comments
 //TODO remove unused globals
-const int windowSize = 2;
+const int windowSize = 4096;
 int counter = 0;
 float* s_signal_ptr;
 
@@ -165,7 +165,7 @@ int main(int argc, char** argv)
 	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (i = 0; i < sampleCount; i += windowSize) {
+	for (i = 0; i + windowSize < sampleCount; i += windowSize) {
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
