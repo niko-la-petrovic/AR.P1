@@ -73,7 +73,7 @@ section .rodata
     neg2pi: dd -6.28318530717959
     max_str_len: db 0xffffffffffffffff
     null_byte: db 0
-    samples_const: dq 4;TODO 4096 ;window size
+    samples_const: dq 4096;window size
     
     %define s_signal_ptr 56
     %define s_signal_sample_count 48
@@ -485,9 +485,9 @@ fft_calc_unoptimized:
     fild qword [longBuffer]
     ;/signalLength
     mov [longBuffer], rdi
-    fdiv qword [longBuffer]
+    fidiv dword [longBuffer] ;NOTE: loading longBuffer as qword, but reading as dword
     ;*-2pi
-    fmul qword [neg2pi]
+    fmul dword [neg2pi]
     
     ;copy the angle
     fld st0
