@@ -73,7 +73,7 @@ section .rodata
     neg2pi: dd -6.28318530717959
     max_str_len: db 0xffffffffffffffff
     null_byte: db 0
-    samples_const: dq 2;TODO 4096 ;window size
+    samples_const: dq 4;TODO 4096 ;window size
     
     %define s_signal_ptr 56
     %define s_signal_sample_count 48
@@ -273,16 +273,14 @@ CMAIN:
     ret
 fft_windowed:
     ;out of bounds check
+    ;ensure enough data in window
     xor rax, rax
     mov eax, [sample_count]
     mov rcx, [signal_counter]
-    cmp rax, rcx;sample_count <= signal_counter
-    jle _nop
-    
-    ;ensure enough data
-    sub rax, rcx
-    cmp rax, [samples_const]; stop if remaining number of samples is less than the window size
-    jl _nop
+    mov rdx, rcx
+    add rdx, [samples_const]
+    cmp rdx, rax;signal_counter+window size < sample_count
+    jge _nop
     
     ;fft
     ;move along signal ptr to the rcx-th sample
