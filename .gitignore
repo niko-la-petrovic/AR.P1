@@ -368,3 +368,4 @@ FodyWeavers.xsd
 AR.P1.ASM/main
 *.out
 /AR.P1.Cpp/output.bin
+/AR.P1.Cpp/.vscode

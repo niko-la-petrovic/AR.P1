@@ -8,10 +8,13 @@
 #include <stdexcept>
 #include <chrono>
 #include <complex>
-#include <numbers>
+#include <cstdio>
+#include "avxintrin.h"
+#include <filesystem>
 
 using namespace std;
 using namespace std::chrono;
+namespace fs = std::filesystem;
 
 auto failedOpenStr = "Failed to open input file";
 auto invalidSamplingRateStr = "Invalid sampling rate. Expected 44100";
@@ -24,6 +27,11 @@ char nullDelimiter[1] = { 0 };
 const int windowSize = 4096;
 int counter = 0;
 float* s_signal_ptr;
+const double pi = 3.141592653589793;
+
+#ifdef __INTELLISENSE__ 
+using __float128 = long double; // or some fake 128 bit floating point type
+#endif
 
 complex<float>* fft_recurse(const float* signal, const unsigned signalLength)
 {
@@ -60,7 +68,7 @@ complex<float>* fft_recurse(const float* signal, const unsigned signalLength)
 	{
 		//cout << "calculating";
 		complex<float> oddOffsetSpectralComponent =
-			polar<float>(1, -2 * numbers::pi * (i / static_cast<float>(signalLength))) *
+			polar<float>(1, -2 * pi * ((float)i / static_cast<float>(signalLength))) *
 			oddSpectralComponents[i];
 
 		//cout << "assigning 1";
@@ -81,6 +89,8 @@ complex<float>* fft_recurse(const float* signal, const unsigned signalLength)
 
 int main(int argc, char** argv)
 {
+	cout << "Current path is " << fs::current_path() << endl;
+
 	if (argc < 2) {
 		cout << "No input file path argument provided." << endl;
 		return -1;
@@ -92,7 +102,7 @@ int main(int argc, char** argv)
 	ifs.open(inFilePath.c_str(), ios::binary | ios::in);
 	if (!ifs.is_open()) {
 		cout << failedOpenStr << " " << inFilePath << endl;
-		throw new exception(failedOpenStr);
+		throw new exception();
 	}
 
 	char* headerBuffer = new char[44];
@@ -102,20 +112,21 @@ int main(int argc, char** argv)
 	if (samplingRate != 44100)
 	{
 		cout << invalidSamplingRateStr << endl;
-		throw new exception(invalidSamplingRateStr);
+		throw new exception();
 	}
 
 	short bitDepth = *(short*)(headerBuffer + 34);
 	if (bitDepth != 16)
 	{
 		cout << invalidBitDepthStr << endl;
-		throw new exception(invalidBitDepthStr);
+		throw new exception();
 	}
 
 	int dataBytes = *(int*)(headerBuffer + 40);
 
 	long sampleCount = dataBytes / 2;
-	float* signalPtr = new float[sampleCount];
+	float* signalPtr = (float*)aligned_alloc(32, 4 * sampleCount);
+
 	s_signal_ptr = signalPtr;
 
 	for (int i = 0; i < sampleCount - 16; i += 16) {
@@ -142,7 +153,7 @@ int main(int argc, char** argv)
 	}
 
 	ofstream ofs;
-	ofs.open(outFilePath, ios::out | ios::beg | ios::binary);
+	ofs.open(outFilePath, ios::out | ios::binary);
 
 	////write input file path
 	//ofs.write(inFilePath.c_str(), inFilePath.length());
@@ -151,7 +162,7 @@ int main(int argc, char** argv)
 	////write current milliseconds
 	//auto startMillis = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 	//ofs.write((char*)&startMillis, 8);
-	//ofs.write(nullDelimiter, 1);
+	//ofs.write(nullDelimiter, 1);\
 
 	////write signal
 	//ofs.write((char*)signalPtr, sampleCount * 4);
@@ -162,7 +173,7 @@ int main(int argc, char** argv)
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
-		
+
 		if (specComps != nullptr) {
 			ofs.write((char*)specComps, windowSize * sizeof(complex<float>));
 		}
@@ -178,6 +189,7 @@ int main(int argc, char** argv)
 	ofs.close();
 	ifs.close();
 
-	delete[] signalPtr;
+	free(signalPtr);
+	//delete[] signalPtr;
 	delete[] headerBuffer;
 }
