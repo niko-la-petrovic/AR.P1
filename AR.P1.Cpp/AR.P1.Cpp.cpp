@@ -21,7 +21,7 @@ char nullDelimiter[1] = { 0 };
 
 //TODO clean up comments
 //TODO remove unused globals
-const int windowSize = 4096;
+const int windowSize = 2;
 int counter = 0;
 float* s_signal_ptr;
 
@@ -113,12 +113,19 @@ int main(int argc, char** argv)
 	}
 
 	int dataBytes = *(int*)(headerBuffer + 40);
+	int totalSamples = dataBytes / 2;
+	long sampleCount = 0;
+	{
+		int alignedSamples = totalSamples - totalSamples % 16;
+		sampleCount = alignedSamples;
+	}
 
-	long sampleCount = dataBytes / 2;
 	float* signalPtr = new float[sampleCount];
 	s_signal_ptr = signalPtr;
 
-	for (int i = 0; i < sampleCount - 16; i += 16) {
+	int i;
+	for (i = 0; i < sampleCount; i += 16)
+	{
 		//convert into floats to get the signal buffer
 		__m256i shortBuffer = {};
 		//read 16 shorts
@@ -158,11 +165,11 @@ int main(int argc, char** argv)
 	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (int i = 0; i < sampleCount - windowSize; i += windowSize) {
+	for (i = 0; i < sampleCount; i += windowSize) {
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
-		
+
 		if (specComps != nullptr) {
 			ofs.write((char*)specComps, windowSize * sizeof(complex<float>));
 		}
