@@ -15,7 +15,7 @@ namespace AR.P1.Reconstructor
     class Program
     {
         public const double SamplingRate = 44100.0;
-        public const int WindowSize = 4096;
+        public static int WindowSize = 4096;
         public const string OutPath = "output.csv";
 
         unsafe static void Main(string[] args)
@@ -27,6 +27,8 @@ namespace AR.P1.Reconstructor
             }
 
             string inputFilePath = args[0];
+            if (args.Length >= 1)
+                WindowSize = Convert.ToInt32(args[1]);
 
             var fileInfo = new FileInfo(inputFilePath);
             var fileLength = fileInfo.Length;
