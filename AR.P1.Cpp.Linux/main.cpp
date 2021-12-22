@@ -11,6 +11,7 @@
 #include <cstdio>
 #include "avxintrin.h"
 #include <filesystem>
+#include "../../../../../../Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/include/immintrin.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -22,6 +23,7 @@ auto invalidBitDepthStr = "Invalid bit depth. Expected 16.";
 auto outFilePath = "output.bin";
 char nullDelimiter[1] = { 0 };
 
+//TODO update Cpp.Linux according to the new changes in .Cpp
 //TODO clean up comments
 //TODO remove unused globals
 const int windowSize = 4096;
@@ -150,6 +152,7 @@ int main(int argc, char** argv)
 
 		//store remainig 8 floats
 		_mm256_store_ps(signalPtr + i + 8, higherFloats);
+		//_mm256_sin_pd()
 	}
 
 	ofstream ofs;
