@@ -97,6 +97,9 @@ section .data
     last_time: dq 1
     signal_counter: dq 1
 section .bss
+    align 32
+    avxBuffer: resd 8
+
     argc: resq 1
     argv: resq 1
     
@@ -107,7 +110,7 @@ section .bss
     fd_out: resq 1
     
     data_len: resb 4
-    half_data_len: resb 4;TODO remove
+    padding_1: resb 4;unused, but needed for alignment
     signal_ptr: resq 1
 
     %define buffer_len 32;16 shorts
@@ -126,6 +129,7 @@ section .bss
     longBuffer: resq 1
     
     sample_count: resb 4    
+    
 section .text
 global CMAIN ;CMAIN/_start
 CMAIN:
@@ -419,9 +423,9 @@ fft:
     mov rsi, rsp;previous stack pointer in rsi
     
     ;prepare signal length vector for fft_calc
-    mov [intBuffer], edi;NOTE: treating rdi as edi
-    vpbroadcastd ymm0, [intBuffer]
-    vcvtdq2ps ymm15, ymm0;signalLenVec - ymm15
+    ;mov [intBuffer], edi;NOTE: treating rdi as edi
+    ;vpbroadcastd ymm0, [intBuffer]
+    ;vcvtdq2ps ymm15, ymm0;signalLenVec - ymm15
     call fft_calc
     ;call fft_calc_unoptimized
     
@@ -455,7 +459,7 @@ fft:
     mov rax, r8
     
     ret
-fft_calc:;TODO AVX optimizations
+fft_calc:
     ;spec comps processed in rcx
     ;half sample count in rdx
     ;signal sample count in rdi
@@ -472,104 +476,56 @@ fft_calc:;TODO AVX optimizations
     vcvtdq2ps ymm1, ymm0;i - ymm1
     
     vaddps ymm2, ymm1, [_indicesVector];currentIndicesVector - ymm2
-
-    vmulps ymm3, ymm2, [_negTwoPi];constMultipliedVector - ymm3
     
+    vmulps ymm3, ymm2, [_negTwoPi];constMultipliedVector - ymm3
+
     vdivps ymm14, ymm3, ymm15;thetaVector - ymm14
     
+    ;calc cos
     vmovaps ymm0, ymm14
     call simd_cos
     vmovaps ymm13, ymm0;cosV - ymm13
     
+    ;calc sin
     vmovaps ymm0, ymm14
     call simd_sin
     vmovaps ymm12, ymm0;sinV - ymm12
     
-    ;calculate odd offset
-    ;oddOffset = polar(1, -2pi*i/signalLength) * oddSpectralComponent[i]
-    ;(x+yi)(u+vi)=(xu - yv) + (xv + yu)i
-    
-    ;polar real
-    ;i
-    mov [longBuffer], rcx
-    fild qword [longBuffer]
-    ;/signalLength
-    mov [longBuffer], rdi
-    fidiv dword [longBuffer] ;NOTE: loading longBuffer as qword, but reading as dword
-    ;*-2pi
-    fmul dword [neg2pi]
-    
-    ;copy the angle
-    fld st0
-    ;cos(-2pi*i/signalLength)
-    fcos
-    fstp dword [realBuffer];x
-    
-    ;sin(-2pi*i/signalLength)
-    fsin
-    fstp dword [imagBuffer];y
-    
-    ;oddOffset real component = xu - yv
-    fld dword [realBuffer];x
-    fld st0;keep a copy of x for one more multiplication
+    ;store in vector as theta1, theta2, theta3, theta4, theta1, theta2, theta3, theta4,
+    vmovaps [avxBuffer], xmm13
+    vmovaps [avxBuffer+16], xmm12
+    vmovaps ymm0, [avxBuffer];cosSinV - ymm0
     
     mov rax, [rsi+s_odd_spec_comps_ptr]
-    lea rax, [rax+rcx*8];address to load u and v from
-    fmul dword [rax];u => xu, x
+    lea rax, [rax+rcx*8]
+    vmovups ymm1, [rax];oddSpecCompsV - ymm1    
     
-    fld dword [imagBuffer];y => y, xu, x
-    fmul dword[rax+4];v => yv, xu, x
-    fchs; => -yv, xu, x
-            
-    fadd st1; => xu-yv, xu, x
-    fstp dword [realBuffer];xu-yv => xu, x
-            
-    ;oddOffset imag component = xv + yu
-    fstp st0; => x
-    fmul dword[rax+4];v => xv
-    fld dword [imagBuffer];y => y, xv
-    fmul dword [rax];u => yu, xv
-    
-    fadd st1;xv+yu, xv
-    fstp dword [imagBuffer];xv+yu => xv
-    fstp st0;clear
-    
-    ;spec comps[i] = even spec comps[i] + odd offset spec comp
-    ;(x+yi)+(u+vi) = (x+u)+(y+v)i
-    mov rax, [rsi+s_even_spec_comps_ptr]
-    lea rax, [rax+rcx*8];even spec comps[i]
-    mov r8, rax;temp save
-    fld dword [realBuffer];x => x
-    fadd dword [rax];u => x+u
-    fld dword [imagBuffer];y => y, x+u
-    fadd dword[rax+4];v => y+v, x+u
-    
-    fstp dword [longBuffer+4];y+v
-    fstp dword [longBuffer];x+u
-    
-    mov rax, [rsi+s_spec_comps_ptr]
-    lea rax, [rax+rcx*8];spec comps[i]
-    mov r9, [longBuffer]
-    mov [rax], r9;
-    
-    ;spec comps[half sample count + i] = even spec comps [i] - odd offset spec comp
-    ;(x+yi)-(u+vi) = (x-u)+(y-v)i
-    mov rax, r8;temp restore
-    fld dword [rax];x => x
-    fsub dword [realBuffer];u => x-u
-    fld dword [rax+4];y => y, x-u
-    fsub dword[imagBuffer];v => y-v, x-u
+    vshufps ymm2, ymm1, ymm1, 85;bSwap - ymm2
 
-    fstp dword [longBuffer+4];y-v
-    fstp dword [longBuffer];x-u
+    vshufps ymm3, ymm0, ymm0, 255;aIm - ymm3
     
+    vshufps ymm4, ymm0, ymm0, 0;aRe - ymm4
+
+    vmulps ymm5, ymm3, ymm2;aImBSwap - ymm5
+    
+    ;vfmaddps ymm6, ymm4, ymm1, ymm5;oddOffsetSpecComp - ymm6
+    vmulps ymm6, ymm4, ymm1
+    vaddps ymm6, ymm6, ymm5
+    
+    mov rax, [rsi+s_even_spec_comps_ptr]
+    lea rax, [rax+rcx*8]
+    vmovups ymm7, [rax];evenSpecCompsV - ymm7
+    
+    vaddps ymm8, ymm7, ymm6;ithSpecComps - ymm8
     mov rax, [rsi+s_spec_comps_ptr]
-    lea rax, [rax+rdx*8]
-    lea rax, [rax+rcx*8];spec comps [half sample count + i]
-    mov r9, [longBuffer]
-    mov [rax], r9
+    lea rax, [rax+rcx*8]
+    vmovups [rax], ymm8
     
-    inc rcx
+    vsubps ymm9, ymm7, ymm6;otherIthSpecComps - ymm9
+    lea rax, [rax+rdx*8]
+    vmovups [rax], ymm9
+    
+    add rcx, 4
     
     jmp fft_calc
 fft_calc_unoptimized:
@@ -943,6 +899,7 @@ too_many_args:
     PRINT_STRING too_many_args_str
     NEWLINE
     call exit
+;NOTE for the sake of this problem, could be reduced to using xmm* registers
 simd_cos:
     ;x in ymm0
     vaddps ymm0, ymm0, [_piHalf]
