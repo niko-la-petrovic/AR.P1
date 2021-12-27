@@ -75,6 +75,16 @@ section .rodata
     null_byte: db 0
     samples_const: dq 4096;window size
     
+    _negTwoPi: times 8 dd -6.283185307179586476925286766559
+    _indicesVector: dd 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0
+    
+    _fourDivPi: times 8 dd 1.2732395447351626861510701069801
+    _negFourDivPiSq: times 8 dd -0.40528473456935108577551785283891
+    _piHalf: times 8 dd 1.5707963267948966192313216916398
+    _p: times 8 dd 0.225
+    _positiveSignMask: times 8 dd 0x7fffffff
+    _ones: times 8 dd 1.0
+    
     %define s_signal_ptr 56
     %define s_signal_sample_count 48
     %define s_spec_comps_ptr 40
@@ -126,7 +136,7 @@ CMAIN:
     
     ;print welcome,welcome_len
     
-     cmp byte [argc], 1
+    cmp byte [argc], 1
     ;jz missing_args
 
     mov rax, 2
@@ -408,6 +418,10 @@ fft:
     mov rdi, [rsp+s_signal_sample_count];signal sample count in rdi
     mov rsi, rsp;previous stack pointer in rsi
     
+    ;prepare signal length vector for fft_calc
+    mov [intBuffer], edi;NOTE: treating rdi as edi
+    vpbroadcastd ymm0, [intBuffer]
+    vcvtdq2ps ymm15, ymm0;signalLenVec - ymm15
     call fft_calc
     ;call fft_calc_unoptimized
     
@@ -446,13 +460,31 @@ fft_calc:;TODO AVX optimizations
     ;half sample count in rdx
     ;signal sample count in rdi
     ;previous stack pointer in rsi
-    cmp rdx, rcx
-    jle _nop
+    ;signal length vector in ymm15 (8 floats)
+    mov r8, rcx
+    add r8, 4
+    cmp r8, rdx
+    jg fft_calc_unoptimized
+    
+    ;load current index as int, convert to floats
+    mov [intBuffer], ecx;NOTE: treating rcx as ecx
+    vpbroadcastd ymm0, [intBuffer]
+    vcvtdq2ps ymm1, ymm0;i - ymm1
+    
+    vaddps ymm2, ymm1, [_indicesVector];currentIndicesVector - ymm2
 
-    ;TODO check if i + 2 <= halfSignalLength
-
-    ;TODO ensure termination by calling fft_calc_unoptimized for
-
+    vmulps ymm3, ymm2, [_negTwoPi];constMultipliedVector - ymm3
+    
+    vdivps ymm14, ymm3, ymm15;thetaVector - ymm14
+    
+    vmovaps ymm0, ymm14
+    call simd_cos
+    vmovaps ymm13, ymm0;cosV - ymm13
+    
+    vmovaps ymm0, ymm14
+    call simd_sin
+    vmovaps ymm12, ymm0;sinV - ymm12
+    
     ;calculate odd offset
     ;oddOffset = polar(1, -2pi*i/signalLength) * oddSpectralComponent[i]
     ;(x+yi)(u+vi)=(xu - yv) + (xv + yu)i
@@ -911,3 +943,26 @@ too_many_args:
     PRINT_STRING too_many_args_str
     NEWLINE
     call exit
+simd_cos:
+    ;x in ymm0
+    vaddps ymm0, ymm0, [_piHalf]
+    jmp simd_sin
+simd_sin:
+    ;x in ymm0
+    vmulps ymm1, ymm0, [_fourDivPi];bTimesX - ymm1
+    
+    vmulps ymm2, ymm0, [_negFourDivPiSq];cTimesX - ymm2
+
+    vandps ymm3, ymm0, [_positiveSignMask];absX - ymm3
+    
+    vmulps ymm4, ymm2, ymm3;cTimesXTimesAbsX - ymm4
+    
+    vaddps ymm5, ymm1, ymm4;y - ymm5
+    
+    vandps ymm6, ymm5, [_positiveSignMask];absY - ymm6
+    vmulps ymm7, ymm5, ymm6;yMultAbsY - ymm7
+    vsubps ymm8, ymm7, ymm5;yMultAbsYSubY - ymm8
+    vmulps ymm9, ymm8, [_p];pTimesYMultAbsYSubY - ymm9
+    vaddps ymm0, ymm9, ymm5;pTimesYMultAbsYSubYAddY
+    
+    ret
