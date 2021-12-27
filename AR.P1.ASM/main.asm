@@ -241,8 +241,8 @@ CMAIN:
     mov [signal_counter], rcx
     
     ;process .WAV data sect1on and write signal floats into signal_ptr
-    ;call rsws
-    call rsws_unoptimized
+    call rsws
+    ;call rsws_unoptimized
 
     ;write signal len to fd_out
     ; mov rdi, [fd_out]
@@ -407,8 +407,9 @@ fft:
     mov rdx, [rsp+s_half_sample_count];half sample count in rdx
     mov rdi, [rsp+s_signal_sample_count];signal sample count in rdi
     mov rsi, rsp;previous stack pointer in rsi
-    ;call fft_calc
-    call fft_calc_unoptimized
+    
+    call fft_calc
+    ;call fft_calc_unoptimized
     
     ;cleanup
     ;odd spec comps ptr
@@ -440,32 +441,104 @@ fft:
     mov rax, r8
     
     ret
-fft_calc:
+fft_calc:;TODO AVX optimizations
     ;spec comps processed in rcx
     ;half sample count in rdx
     ;signal sample count in rdi
     ;previous stack pointer in rsi
     cmp rdx, rcx
     jle _nop
-    
-    ;TODO AVX unoptimize
-    
-    ;each ymm register can hold 4 complex numbers
-    
-    ;theta = i / signal sample count * (-2*pi), where i=rcx
-    ;re: ymm0[0]=cos(theta)
-    ;im: ymm0[0]=sin(theta)
-    ;complex: ymm0=re,im
-    
-    ;complex: ymm1[0]=odd spec comps ptr[0]
-    
-    ;complex: ymm0=ymm0 * ymm1
-    
-    ;complex: spec comps ptr[0] = ymm0 + even spec comps ptr[0]
-    ;complex: spec comps ptr[half sample count + 0] = even spec comps ptr[0] - ymm0
-    
-    add rcx, 4
 
+    ;TODO check if i + 2 <= halfSignalLength
+
+    ;TODO ensure termination by calling fft_calc_unoptimized for
+
+    ;calculate odd offset
+    ;oddOffset = polar(1, -2pi*i/signalLength) * oddSpectralComponent[i]
+    ;(x+yi)(u+vi)=(xu - yv) + (xv + yu)i
+    
+    ;polar real
+    ;i
+    mov [longBuffer], rcx
+    fild qword [longBuffer]
+    ;/signalLength
+    mov [longBuffer], rdi
+    fidiv dword [longBuffer] ;NOTE: loading longBuffer as qword, but reading as dword
+    ;*-2pi
+    fmul dword [neg2pi]
+    
+    ;copy the angle
+    fld st0
+    ;cos(-2pi*i/signalLength)
+    fcos
+    fstp dword [realBuffer];x
+    
+    ;sin(-2pi*i/signalLength)
+    fsin
+    fstp dword [imagBuffer];y
+    
+    ;oddOffset real component = xu - yv
+    fld dword [realBuffer];x
+    fld st0;keep a copy of x for one more multiplication
+    
+    mov rax, [rsi+s_odd_spec_comps_ptr]
+    lea rax, [rax+rcx*8];address to load u and v from
+    fmul dword [rax];u => xu, x
+    
+    fld dword [imagBuffer];y => y, xu, x
+    fmul dword[rax+4];v => yv, xu, x
+    fchs; => -yv, xu, x
+            
+    fadd st1; => xu-yv, xu, x
+    fstp dword [realBuffer];xu-yv => xu, x
+            
+    ;oddOffset imag component = xv + yu
+    fstp st0; => x
+    fmul dword[rax+4];v => xv
+    fld dword [imagBuffer];y => y, xv
+    fmul dword [rax];u => yu, xv
+    
+    fadd st1;xv+yu, xv
+    fstp dword [imagBuffer];xv+yu => xv
+    fstp st0;clear
+    
+    ;spec comps[i] = even spec comps[i] + odd offset spec comp
+    ;(x+yi)+(u+vi) = (x+u)+(y+v)i
+    mov rax, [rsi+s_even_spec_comps_ptr]
+    lea rax, [rax+rcx*8];even spec comps[i]
+    mov r8, rax;temp save
+    fld dword [realBuffer];x => x
+    fadd dword [rax];u => x+u
+    fld dword [imagBuffer];y => y, x+u
+    fadd dword[rax+4];v => y+v, x+u
+    
+    fstp dword [longBuffer+4];y+v
+    fstp dword [longBuffer];x+u
+    
+    mov rax, [rsi+s_spec_comps_ptr]
+    lea rax, [rax+rcx*8];spec comps[i]
+    mov r9, [longBuffer]
+    mov [rax], r9;
+    
+    ;spec comps[half sample count + i] = even spec comps [i] - odd offset spec comp
+    ;(x+yi)-(u+vi) = (x-u)+(y-v)i
+    mov rax, r8;temp restore
+    fld dword [rax];x => x
+    fsub dword [realBuffer];u => x-u
+    fld dword [rax+4];y => y, x-u
+    fsub dword[imagBuffer];v => y-v, x-u
+
+    fstp dword [longBuffer+4];y-v
+    fstp dword [longBuffer];x-u
+    
+    mov rax, [rsi+s_spec_comps_ptr]
+    lea rax, [rax+rdx*8]
+    lea rax, [rax+rcx*8];spec comps [half sample count + i]
+    mov r9, [longBuffer]
+    mov [rax], r9
+    
+    inc rcx
+    
     jmp fft_calc
 fft_calc_unoptimized:
     ;spec comps processed in rcx
