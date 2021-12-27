@@ -165,7 +165,8 @@ int main(int argc, char** argv)
 	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (i = 0; i + windowSize < sampleCount; i += windowSize) {
+	for (i = 0; i + windowSize < sampleCount; i += windowSize)
+	{
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
