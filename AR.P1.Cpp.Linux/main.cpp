@@ -22,6 +22,7 @@ auto invalidBitDepthStr = "Invalid bit depth. Expected 16.";
 auto outFilePath = "output.bin";
 char nullDelimiter[1] = { 0 };
 
+//TODO update Cpp.Linux according to the new changes in .Cpp
 //TODO clean up comments
 //TODO remove unused globals
 const int windowSize = 4096;
@@ -123,13 +124,20 @@ int main(int argc, char** argv)
 	}
 
 	int dataBytes = *(int*)(headerBuffer + 40);
+	int totalSamples = dataBytes / 2;
+	long sampleCount = 0;
+	{
+		int alignedSamples = totalSamples - totalSamples % 16;
+		sampleCount = alignedSamples;
+	}
 
-	long sampleCount = dataBytes / 2;
 	float* signalPtr = (float*)aligned_alloc(32, 4 * sampleCount);
 
 	s_signal_ptr = signalPtr;
 
-	for (int i = 0; i < sampleCount - 16; i += 16) {
+	int i;
+	for (i = 0; i < sampleCount; i += 16)
+	{
 		//convert into floats to get the signal buffer
 		__m256i shortBuffer = {};
 		//read 16 shorts
@@ -162,14 +170,15 @@ int main(int argc, char** argv)
 	////write current milliseconds
 	//auto startMillis = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 	//ofs.write((char*)&startMillis, 8);
-	//ofs.write(nullDelimiter, 1);\
+	//ofs.write(nullDelimiter, 1);
 
 	////write signal
 	//ofs.write((char*)signalPtr, sampleCount * 4);
 	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (int i = 0; i < sampleCount - windowSize; i += windowSize) {
+	for (i = 0; i + windowSize < sampleCount; i += windowSize)
+	{
 		counter = i;
 
 		complex<float>* specComps = fft_recurse(signalPtr + i, windowSize);
@@ -190,6 +199,5 @@ int main(int argc, char** argv)
 	ifs.close();
 
 	free(signalPtr);
-	//delete[] signalPtr;
 	delete[] headerBuffer;
 }

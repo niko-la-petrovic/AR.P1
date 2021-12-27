@@ -64,20 +64,20 @@ namespace AR.P1.DataGen
         public static void WriteData(DataGenOptions dataGenOptions, BinaryWriter binaryStream, Func<double, double> waveform)
         {
             double t = 0;
-            Func<double, byte[]> getBytesToWrite = GetBytesToWrite(dataGenOptions.ByteDepth);
+            Func<double, byte[]> setBytesToWrite = SetBytesToWrite(dataGenOptions.ByteDepth);
 
             for (long i = 0; i < dataGenOptions.SampleCount; i++)
             {
                 var amplitude = dataGenOptions.Amplitude;
                 var displacement = amplitude * waveform(t);
-                var arrToWrite = getBytesToWrite(displacement);
+                var arrToWrite = setBytesToWrite(displacement);
 
                 binaryStream.Write(arrToWrite);
                 t += dataGenOptions.SampleLength;
             }
         }
 
-        public unsafe static Func<double, byte[]> GetBytesToWrite(int byteDepth)
+        public unsafe static Func<double, byte[]> SetBytesToWrite(int byteDepth)
         {
             switch (byteDepth)
             {
