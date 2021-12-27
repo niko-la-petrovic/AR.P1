@@ -141,11 +141,11 @@ CMAIN:
     ;print welcome,welcome_len
     
     cmp byte [argc], 1
-    ;jz missing_args
+    jz missing_args
 
     mov rax, 2
     sub rax, [argc]
-    ;js too_many_args
+    js too_many_args
 
     mov rcx, [argc]
     mov rbx, rsi
@@ -159,7 +159,8 @@ CMAIN:
     
     ;printl filename, filename_len ;TODO use cli arg
 
-    mov rdi, filename;TODO use cli arg
+    ;mov rdi, filename
+    mov rdi, [filename_arg]
     mov rsi, O_RDONLY    
     call open_file
     mov rax, [fd]
@@ -423,9 +424,9 @@ fft:
     mov rsi, rsp;previous stack pointer in rsi
     
     ;prepare signal length vector for fft_calc
-    ;mov [intBuffer], edi;NOTE: treating rdi as edi
-    ;vpbroadcastd ymm0, [intBuffer]
-    ;vcvtdq2ps ymm15, ymm0;signalLenVec - ymm15
+    mov [intBuffer], edi;NOTE: treating rdi as edi
+    vpbroadcastd ymm0, [intBuffer]
+    vcvtdq2ps ymm15, ymm0;signalLenVec - ymm15
     call fft_calc
     ;call fft_calc_unoptimized
     
@@ -508,6 +509,11 @@ fft_calc:
 
     vmulps ymm5, ymm3, ymm2;aImBSwap - ymm5
     
+    ;NOTE vfmaddps doesn't work as written, for some reason
+    ;https://www.amd.com/system/files/TechDocs/43479.pdf
+    ;page 46
+    ;apparently if the 256-bit version of the instruction is used, two of the arguments are double precision
+    ;while one is single-precision
     ;vfmaddps ymm6, ymm4, ymm1, ymm5;oddOffsetSpecComp - ymm6
     vmulps ymm6, ymm4, ymm1
     vaddps ymm6, ymm6, ymm5
