@@ -77,6 +77,8 @@ section .rodata
     
     _negTwoPi: times 8 dd -6.283185307179586476925286766559
     _indicesVector: dd 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0
+    align 32
+    _offsetsVector: dd 0, 4, 1, 5, 2, 6, 3, 7
     
     _fourDivPi: times 8 dd 1.2732395447351626861510701069801
     _negFourDivPiSq: times 8 dd -0.40528473456935108577551785283891
@@ -493,19 +495,24 @@ fft_calc:
     vmovaps ymm12, ymm0;sinV - ymm12
     
     ;store in vector as theta1, theta2, theta3, theta4, theta1, theta2, theta3, theta4,
-    vmovaps [avxBuffer], xmm13
-    vmovaps [avxBuffer+16], xmm12
+    vmovaps [avxBuffer], xmm13;store cos
+    vmovaps [avxBuffer+16], xmm12;store sin
     vmovaps ymm0, [avxBuffer];cosSinV - ymm0
+    ;shuffle/permute/blend from 1 2 3 4 5 6 7 8
+    ;to 1 5 2 6 3 7 4 8
+    ;i.e. the offsets should be 0 4 1 5 2 6 3 7
+    vmovdqu ymm1, [_offsetsVector]
+    vpermps ymm0, ymm1, ymm0 
     
     mov rax, [rsi+s_odd_spec_comps_ptr]
     lea rax, [rax+rcx*8]
     vmovups ymm1, [rax];oddSpecCompsV - ymm1    
     
-    vshufps ymm2, ymm1, ymm1, 85;bSwap - ymm2
+    vshufps ymm2, ymm1, ymm1, 177;bSwap - ymm2 - 1 0 3 2
 
-    vshufps ymm3, ymm0, ymm0, 255;aIm - ymm3
+    vshufps ymm3, ymm0, ymm0, 245;aIm - ymm3 - 1 1 3 3
     
-    vshufps ymm4, ymm0, ymm0, 0;aRe - ymm4
+    vshufps ymm4, ymm0, ymm0, 160;aRe - ymm4 0 0 2 2
 
     vmulps ymm5, ymm3, ymm2;aImBSwap - ymm5
     
@@ -514,9 +521,13 @@ fft_calc:
     ;page 46
     ;apparently if the 256-bit version of the instruction is used, two of the arguments are double precision
     ;while one is single-precision
+    ;actually, unsupported fma4
+    
     ;vfmaddps ymm6, ymm4, ymm1, ymm5;oddOffsetSpecComp - ymm6
-    vmulps ymm6, ymm4, ymm1
-    vaddps ymm6, ymm6, ymm5
+    ;vfmaddsubps ymm6, ymm4, ymm1, ymm5
+    ;vfmadd132ps ymm6, ymm4, ymm1
+    vmovaps ymm6,ymm4
+    vfmaddsub123ps ymm6, ymm1, ymm5;oddOffsetSpecComp - ymm6
     
     mov rax, [rsi+s_even_spec_comps_ptr]
     lea rax, [rax+rcx*8]
