@@ -22,9 +22,6 @@ auto invalidBitDepthStr = "Invalid bit depth. Expected 16.";
 auto outFilePath = "output.bin";
 char nullDelimiter[1] = { 0 };
 
-//TODO update Cpp.Linux according to the new changes in .Cpp
-//TODO clean up comments
-//TODO remove unused globals
 const int windowSize = 4096;
 int counter = 0;
 float* s_signal_ptr;
@@ -64,7 +61,6 @@ complex<float>* fft_recurse(const float* signal, const unsigned signalLength)
 	complex<float>* oddSpectralComponents = fft_recurse(oddSignal, halfSignalLength);
 
 	//cout << "looping";
-	//TODO AVX?
 	for (unsigned i = 0; i < halfSignalLength; i++)
 	{
 		//cout << "calculating";
@@ -135,6 +131,8 @@ int main(int argc, char** argv)
 
 	s_signal_ptr = signalPtr;
 
+	// TODO unoptimize
+
 	int i;
 	for (i = 0; i < sampleCount; i += 16)
 	{
@@ -177,7 +175,7 @@ int main(int argc, char** argv)
 	//ofs.write(nullDelimiter, 1);
 
 	//pass signal buffer to fft
-	for (i = 0; i + windowSize < sampleCount; i += windowSize)
+	for (i = 0; i + windowSize <= sampleCount; i += windowSize)
 	{
 		counter = i;
 

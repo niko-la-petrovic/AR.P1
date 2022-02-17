@@ -6,7 +6,7 @@
     },
     "Desktop": {
       "commandName": "Project",
-      "commandLineArgs": "C:\\Users\\Blue-Glass\\Desktop\\output.bin"
+      "commandLineArgs": "C:\\Users\\Blue-Glass\\Desktop\\output.bin 4096"
     }
   }
 }
